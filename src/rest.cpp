@@ -5,10 +5,11 @@
 #include <trace.h>
 #include <pm.h>
 #include <wifiHandler.h>
+#include <logBuffer.h>
 
 extern WifiHandler wifiHandler;
 
-#define BIG_JSON_BUFFER_SIZE 2048
+#define BIG_JSON_BUFFER_SIZE 4096
 #define SMALL_JSON_BUFFER_SIZE 256
 
 static char _buffer[BIG_JSON_BUFFER_SIZE]; // for serialization of bigger things, not thread safe!
@@ -154,3 +155,17 @@ String restGetPm(const String & resetStamp)
   return String(_buffer);
 }
 
+
+String restPopLog() 
+{
+  TRACE("REST pop log")
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  jsonDocument.createNestedObject("log");
+  String log = popLog();
+  jsonDocument["log"] = log;
+
+  serializeJson(jsonDocument, _buffer); 
+  return String(_buffer);
+}

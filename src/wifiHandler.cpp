@@ -123,8 +123,7 @@ bool WifiHandler::connect(const String name, const String password)
     
     if (status == WL_CONNECTED) 
     {
-      Serial.print("Connected. IP: ");
-      Serial.println(WiFi.localIP());
+      TRACE("Connected. IP: %s", WiFi.localIP().toString().c_str());
       return true;
     }
 
@@ -132,7 +131,7 @@ bool WifiHandler::connect(const String name, const String password)
 
     if (retries < MAX_RETRIES)
     {
-      Serial.print(".");
+      TRACE(".");
       delay(500);
       continue;
     }

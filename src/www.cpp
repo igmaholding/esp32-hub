@@ -308,6 +308,14 @@ void on_get_pm()
 }
 
 
+void on_pop_log() 
+{
+  String r = restPopLog();  
+  webServer.send(200, "application/json", r.c_str());
+  led_blink_once = true;
+}
+
+
 void wwwSetupRouting() 
 {
   webServer.on("/restart", HTTP_POST, on_restart);
@@ -321,6 +329,7 @@ void wwwSetupRouting()
   webServer.on("/reset/pm", HTTP_POST, on_reset_pm);
   webServer.on("/get", HTTP_GET, on_get);
   webServer.on("/get/pm", HTTP_GET, on_get_pm);
+  webServer.on("/poplog", HTTP_GET, on_pop_log);
  }
 
 

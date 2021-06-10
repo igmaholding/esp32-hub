@@ -1,5 +1,7 @@
 https://community.platformio.org/t/esp32-ota-using-platformio/15057/4
 
+Windows firewall issues
+https://github.com/espressif/arduino-esp32/issues/3547
 
 Really it’s just as easy as
 

@@ -14,4 +14,6 @@ String restResetPm(const String & resetStamp);
 String restGet(const String & resetStamp);
 String restGetPm(const String & resetStamp);
 
-#define REST_VERSION  "1.1" 
+String restPopLog();
+
+#define REST_VERSION  "1.2" 
