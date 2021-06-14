@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <map>
+#include <time.h>
 
 #include <wifiHandler.h>
 #include <gpio.h>
@@ -15,6 +16,9 @@ WifiHandler wifiHandler;
 
 std::vector<std::pair<String, String>> knownNetworks;
 
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 0;
+const int   daylightOffset_sec = 3600+3600;
 
 void initKnownNetworks()
 {
@@ -59,6 +63,22 @@ void connectWifi()
   led_wifi_on = true;
 }
 
+
+void print_ntp_time()
+{
+  struct tm _tm;
+
+  if(!getLocalTime(&_tm))
+  {
+    ERROR("Failed to obtain time")
+  }
+  else
+  {
+    TRACE("NTP time: %s", tm_2_str(_tm).c_str())
+  }
+}
+
+
 void setup() 
 { 
   start_onboard_led_task();
@@ -66,6 +86,9 @@ void setup()
   Serial.begin(9600);
   initKnownNetworks();
   connectWifi();
+  TRACE("Fetching date and time from NTP ...")
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  print_ntp_time();
   wwwSetupRouting();
   wwwBegin();
 

@@ -9,7 +9,7 @@
 
 extern WifiHandler wifiHandler;
 
-#define BIG_JSON_BUFFER_SIZE 4096
+#define BIG_JSON_BUFFER_SIZE 8192
 #define SMALL_JSON_BUFFER_SIZE 256
 
 static char _buffer[BIG_JSON_BUFFER_SIZE]; // for serialization of bigger things, not thread safe!
@@ -163,8 +163,8 @@ String restPopLog()
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
   jsonDocument.createNestedObject("log");
-  String log = popLog();
-  jsonDocument["log"] = log;
+  JsonVariant jsonVariant = jsonDocument["log"];
+  popLog(jsonVariant);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
