@@ -23,7 +23,7 @@ String time_t_2_str(time_t _time_t)
 }
 
 
-// memory aware ring buffer for log entries
+// memory aware (so far not so) ring buffer for log entries
 
 class LogBuffer
 {
