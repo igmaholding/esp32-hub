@@ -4,6 +4,7 @@
 
 #include <logBuffer.h>
 #include <trace.h>
+#include <binarySemaphore.h>
 
 #define LOG_BUFFER_SIZE 4096
 
@@ -188,6 +189,7 @@ class LogBuffer
         size_t tail; // position of the earliest available block
 
         bool data_lost;   
+        BinarySemaphore semaphore;
 };
 
 const LogBuffer::Block LogBuffer::Block::INVALID_BLOCK(NULL, 0);
@@ -196,6 +198,8 @@ const LogBuffer::Block LogBuffer::Block::INVALID_BLOCK(NULL, 0);
 void LogBuffer::add_entry(const char * text, LogBuffer::EntryType entry_type)
 {
   unsigned payload_size = strlen(text);
+
+  Lock lock(semaphore);
 
   //Serial.printf("#enter add_entry: sizeof(BlockInfo)=%d, head=%d, tail=%d, payload_size=%d\n", (int) sizeof(BlockInfo), (int) head, (int) tail, (int) payload_size);
 
@@ -253,6 +257,8 @@ void LogBuffer::pop(JsonVariant & json)
   json.createNestedArray("entries");
   JsonArray jsonArrayEntries = json["entries"]; 
 
+  Lock lock(semaphore);
+  
   static char text[512];  
 
   if (tail != size_t(-1))

@@ -4,6 +4,7 @@ String restWifiInfo();
 
 String restSetup(const String & body, const String & resetStamp);
 String restSetupPm(const String & body, const String & resetStamp);
+String restSetupAutonom(const String & body);
 
 String restCleanup();
 String restCleanupPm();

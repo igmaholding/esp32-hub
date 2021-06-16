@@ -4,6 +4,7 @@
 #include <rest.h>
 #include <trace.h>
 #include <pm.h>
+#include <autonom.h>
 #include <wifiHandler.h>
 #include <logBuffer.h>
 
@@ -65,6 +66,12 @@ String restSetup(const String & body, const String & resetStamp)
     setupPm(pmJson, resetStamp);
   }
 
+  if (jsonDocument.containsKey("autonom"))
+  {
+    const JsonVariant & pmJson = jsonDocument["autonom"];
+    setupAutonom(pmJson);
+  }
+
   return String("{}");
 }
 
@@ -80,6 +87,21 @@ String restSetupPm(const String & body, const String & resetStamp)
   deserializeJson(jsonDocument, body);
 
   setupPm(jsonDocument.as<JsonVariant>(), resetStamp);
+  
+  return String("{}");
+}
+
+
+String restSetupAutonom(const String & body) 
+{
+  TRACE("REST setup AUTONOM")
+  DEBUG(body.c_str())
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  deserializeJson(jsonDocument, body);
+
+  setupAutonom(jsonDocument.as<JsonVariant>());
   
   return String("{}");
 }

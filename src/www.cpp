@@ -232,6 +232,26 @@ void on_setup_pm()
 }
 
 
+void on_setup_autonom() 
+{
+  String body;
+
+  if (webServer.hasArg("plain") == false) 
+  {
+    ERROR("Setup AUTONOM POST request without a payload")
+  }
+  else
+  {
+    body = webServer.arg("plain");
+  }
+  
+  String r = restSetupAutonom(body);  
+  
+  webServer.send(200, "application/json", r.c_str());
+  led_configured = true;
+}
+
+
 void on_cleanup() 
 {
   String r = restCleanup();  
@@ -323,6 +343,7 @@ void wwwSetupRouting()
   webServer.on("/wifiinfo", HTTP_GET, on_wifiinfo);
   webServer.on("/setup", HTTP_POST, on_setup);
   webServer.on("/setup/pm", HTTP_POST, on_setup_pm);
+  webServer.on("/setup/autonom", HTTP_POST, on_setup_autonom);
   webServer.on("/cleanup", HTTP_POST, on_cleanup);
   webServer.on("/cleanup/pm", HTTP_POST, on_cleanup_pm);
   webServer.on("/reset", HTTP_POST, on_reset);
