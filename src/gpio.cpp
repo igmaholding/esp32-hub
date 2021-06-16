@@ -7,13 +7,99 @@
 
 GpioHandler gpioHandler;
 
+class BinarySemaphore
+{
+    public:
+
+        BinarySemaphore()
+        {
+            handle = xSemaphoreCreateBinary();
+            give(); // it is created in empty state and must be "given" first
+        }
+
+        ~BinarySemaphore()
+        {
+            vSemaphoreDelete(handle);
+        }
+
+        void take()
+        {
+            xSemaphoreTake(handle, portMAX_DELAY);
+        }
+
+        void give()
+        {
+            xSemaphoreGive(handle);
+        }
+
+        void take_isr()
+        {
+            BaseType_t dummy;
+            xSemaphoreTakeFromISR(handle, & dummy);
+        }
+
+        void give_isr()
+        {
+            BaseType_t dummy;
+            xSemaphoreGiveFromISR(handle, & dummy);
+        }
+
+    protected:
+
+        SemaphoreHandle_t  handle; 
+
+};
+
+class Lock
+{
+    public:
+
+        Lock(BinarySemaphore & _binary_semaphore)  
+        {
+            binary_semaphore = & _binary_semaphore; 
+            binary_semaphore->take();
+        }
+
+        ~Lock()  
+        {
+            binary_semaphore->give();
+        }
+
+    protected:
+        BinarySemaphore * binary_semaphore;
+};
+
+
+class LockISR
+{
+    public:
+
+        LockISR(BinarySemaphore & _binary_semaphore)  
+        {
+            binary_semaphore = & _binary_semaphore; 
+            binary_semaphore->take_isr();
+        }
+
+        ~LockISR()  
+        {
+            binary_semaphore->give_isr();
+        }
+
+    protected:
+        BinarySemaphore * binary_semaphore;
+};
+
+
 namespace _gpio_interrupt_handlers 
 {
 
 static std::map<gpio_num_t, gpio_interrupt_handler_t> ext_gpio_interrupt_handlers;
+static BinarySemaphore gpio_semaphore;
 
 void IRAM_ATTR _gpio_common_interrupt_handler(gpio_num_t num) 
 {
+    LockISR lock(gpio_semaphore);
+
     auto iterator = ext_gpio_interrupt_handlers.find(num);
 
     if (iterator != _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.end())
@@ -138,18 +224,19 @@ void GpioHandler::setupChannel(gpio_num_t gpioNum, unsigned gpioFunction, bool i
 
     if (gpio_interrupt_handler)
     {
-      DEBUG("register interrupt handler for for gpio %u", unsigned(gpioNum))
+      DEBUG("register interrupt handler for gpio %u", unsigned(gpioNum))
 
+      Lock lock(_gpio_interrupt_handlers::gpio_semaphore);
       auto iterator = _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.find(gpioNum);
 
       if (iterator != _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.end())
       {
-        DEBUG("replacing interrupt handler for for gpio %u", unsigned(gpioNum))
+        DEBUG("replacing interrupt handler for gpio %u", unsigned(gpioNum))
         _gpio_interrupt_handlers::ext_gpio_interrupt_handlers[gpioNum] = gpio_interrupt_handler;
       }
       else
       {
-        DEBUG("inserting interrupt handler for for gpio %u", unsigned(gpioNum))
+        DEBUG("inserting interrupt handler for gpio %u", unsigned(gpioNum))
         _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.insert(std::pair<gpio_num_t,gpio_interrupt_handler_t>(gpioNum, gpio_interrupt_handler));
       }
     }
@@ -180,6 +267,7 @@ void GpioHandler::cleanupChannel(gpio_num_t gpioNum)
 
     pinMode(gpioNum, INPUT_PULLUP);
 
+    Lock lock(_gpio_interrupt_handlers::gpio_semaphore);
     auto iterator2 = _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.find(gpioNum);
 
     if (iterator2 != _gpio_interrupt_handlers::ext_gpio_interrupt_handlers.end())
