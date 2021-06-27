@@ -53,7 +53,7 @@ class PmHandler
 
       PmHandler()
       {
-        isConfigured = false;
+        is_configured = false;
       }
 
       void setupChannel(gpio_num_t, unsigned debounce);
@@ -63,12 +63,12 @@ class PmHandler
       unsigned getCounter(gpio_num_t) const;
 
       void enumerateChannels(std::vector<gpio_num_t> &) const;
-      void reset(const String& _resetStamp);
+      void reset(const String& _reset_stamp);
 
       static void interruptHandler(gpio_num_t num);
 
-      String resetStamp;
-      bool isConfigured;
+      String reset_stamp;
+      bool is_configured;
 
   protected:
 
@@ -154,7 +154,7 @@ unsigned PmHandler::getCounter(gpio_num_t gpioNum) const
 }
 
 
-void PmHandler::reset(const String & _resetStamp)
+void PmHandler::reset(const String & _reset_stamp)
 {
   auto iterator = pmChannels.begin();
   
@@ -164,7 +164,7 @@ void PmHandler::reset(const String & _resetStamp)
     ++iterator;
   }
 
-  resetStamp = _resetStamp;
+  reset_stamp = _reset_stamp;
 }
 
 
@@ -195,12 +195,12 @@ void pingPm(JsonVariant & json)
 {
   TRACE("pingPm")
   
-  json["reset_stamp"] = pmHandler.resetStamp;
-  json["is_configured"] = pmHandler.isConfigured;
+  json["reset_stamp"] = pmHandler.reset_stamp;
+  json["is_configured"] = pmHandler.is_configured;
 }
 
 
-void setupPm(const JsonVariant & json, const String & resetStamp) 
+void setupPm(const JsonVariant & json, const String & reset_stamp) 
 {
   TRACE("setupPm")
 
@@ -263,27 +263,27 @@ void setupPm(const JsonVariant & json, const String & resetStamp)
     }
   }
 
-  if (!resetStamp.isEmpty())
+  if (!reset_stamp.isEmpty())
   {
-    DEBUG("contains resetStamp")
+    DEBUG("contains reset_stamp")
 
-    pmHandler.resetStamp = resetStamp;
-    DEBUG("resetStamp %s", pmHandler.resetStamp.c_str())
+    pmHandler.reset_stamp = reset_stamp;
+    DEBUG("reset_stamp %s", pmHandler.reset_stamp.c_str())
   }
   
-  pmHandler.isConfigured = true;
+  pmHandler.is_configured = true;
 }
 
 void cleanupPm() 
 {
   TRACE("cleanupPm")
 
-  std::vector<gpio_num_t> gpioNumList;
-  pmHandler.enumerateChannels(gpioNumList);
+  std::vector<gpio_num_t> gpio_num_list;
+  pmHandler.enumerateChannels(gpio_num_list);
 
-  auto iterator = gpioNumList.begin();
+  auto iterator = gpio_num_list.begin();
 
-  while(iterator != gpioNumList.end())
+  while(iterator != gpio_num_list.end())
   {
     pmHandler.cleanupChannel(*iterator);
     gpioHandler.cleanupChannel(*iterator);
@@ -291,38 +291,38 @@ void cleanupPm()
     ++iterator;
   }
 
-  pmHandler.resetStamp.clear();
-  pmHandler.isConfigured = false;
+  pmHandler.reset_stamp.clear();
+  pmHandler.is_configured = false;
 }
 
 
-void resetPm(const String & resetStamp)
+void resetPm(const String & reset_stamp)
 {
   TRACE("resetPm")
-  DEBUG("resetStamp %s", resetStamp.c_str())
+  DEBUG("reset_stamp %s", reset_stamp.c_str())
   
-  pmHandler.reset(resetStamp);
+  pmHandler.reset(reset_stamp);
 }
 
 
-void getPm(JsonVariant & json, const String & resetStamp)
+void getPm(JsonVariant & json, const String & reset_stamp)
 {
   TRACE("getPm")
   
-  json["reset_stamp"] = pmHandler.resetStamp;
-  json["is_configured"] = pmHandler.isConfigured;
+  json["reset_stamp"] = pmHandler.reset_stamp;
+  json["is_configured"] = pmHandler.is_configured;
 
   json.createNestedArray("gpio");
   json.createNestedArray("counter");
   JsonArray jsonArrayGpio = json["gpio"]; 
   JsonArray jsonArrayCounter = json["counter"]; 
 
-  std::vector<gpio_num_t> gpioNumList;
-  pmHandler.enumerateChannels(gpioNumList);
+  std::vector<gpio_num_t> gpio_num_list;
+  pmHandler.enumerateChannels(gpio_num_list);
 
-  auto iterator = gpioNumList.begin();
+  auto iterator = gpio_num_list.begin();
 
-  while(iterator != gpioNumList.end())
+  while(iterator != gpio_num_list.end())
   {
     counter = pmHandler.getCounter(*iterator);
     jsonArrayGpio.add((unsigned) *iterator);
@@ -330,9 +330,9 @@ void getPm(JsonVariant & json, const String & resetStamp)
     ++iterator;
   }
 
-  if (resetStamp.isEmpty() == false)  // ordered reset after get
+  if (reset_stamp.isEmpty() == false)  // ordered reset after get
   {
-    DEBUG("reset with get, resetStamp %s", resetStamp.c_str())
-    pmHandler.reset(resetStamp);
+    DEBUG("reset with get, reset_stamp %s", reset_stamp.c_str())
+    pmHandler.reset(reset_stamp);
   }
 }
