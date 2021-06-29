@@ -4,7 +4,9 @@
 #include <ArduinoOTA.h>
 #include <map>
 #include <time.h>
+#include <eeprom.h>
 
+#include <autonom.h>
 #include <wifiHandler.h>
 #include <gpio.h>
 #include <pm.h>
@@ -19,6 +21,8 @@ std::vector<std::pair<String, String>> knownNetworks;
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 3600+3600;
+
+const size_t EEPROM_SIZE = 512;
 
 void initKnownNetworks()
 {
@@ -84,6 +88,11 @@ void setup()
   start_onboard_led_task();
 
   Serial.begin(9600);
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  restoreAutonom();
+
   initKnownNetworks();
   connectWifi();
   TRACE("Fetching date and time from NTP ...")

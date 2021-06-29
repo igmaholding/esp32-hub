@@ -4,25 +4,30 @@ class ShowerGuardConfig
 {
     public:
 
+        const uint8_t EPROM_VERSION = 1;
+
         ShowerGuardConfig()
         {
         }
         
         void from_json(const JsonVariant & json);
 
+        void to_eprom(std::ostream & os) const;
+        bool from_eprom(std::istream & is);
+
         bool is_valid() const
         {
-            return motion.is_valid() && rh.is_valid();
+            return motion.is_valid() && rh.is_valid() && temp.is_valid();
         }
 
         bool operator == (const ShowerGuardConfig & config) const
         {
-            return motion == config.motion && rh == config.rh;
+            return motion == config.motion && rh == config.rh && temp == config.temp;
         }
 
         String as_string() const
         {
-            return String("{motion=") + motion.as_string() + ", rh=" + rh.as_string() + "}";
+            return String("{motion=") + motion.as_string() + ", rh=" + rh.as_string() + ", temp=" + temp.as_string() + "}";
         }
 
         // data
@@ -35,6 +40,9 @@ class ShowerGuardConfig
             }
 
             void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
 
             bool is_valid() const 
             {
@@ -62,6 +70,9 @@ class ShowerGuardConfig
             
                 void from_json(const JsonVariant & json);
 
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
                 bool is_valid() const 
                 {
                     return gpio != gpio_num_t(-1);
@@ -79,13 +90,16 @@ class ShowerGuardConfig
 
                 gpio_num_t gpio;
                 bool inverted;
-                unsigned debounce;
+                uint16_t debounce;
                 
-            } channel;
+            };
             
-            unsigned linger;
+            Channel channel;            
+            uint16_t linger;
 
-        } motion;
+        };
+        
+        Motion motion;
     
         struct Rh
         {
@@ -94,6 +108,9 @@ class ShowerGuardConfig
             }
 
             void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
 
             bool is_valid() const 
             {
@@ -120,6 +137,9 @@ class ShowerGuardConfig
             
                 void from_json(const JsonVariant & json);
 
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
                 bool is_valid() const 
                 {
                     return gpio != gpio_num_t(-1);
@@ -136,10 +156,81 @@ class ShowerGuardConfig
                 }
 
                 gpio_num_t gpio;
-                unsigned atten;
+                uint8_t atten;
                 
-            } vad, vdd;
+            };
             
-        } rh;
+            Channel vad;
+            Channel vdd;
+            
+        };
+        
+        Rh rh;
+
+        struct Temp
+        {
+            Temp()
+            {
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                return channel.is_valid() && !addr.isEmpty();
+                // TODO: check addr OW format
+            }
+
+            bool operator == (const Temp & temp) const
+            {
+                return channel == temp.channel && addr == temp.addr;
+            }
+
+            String as_string() const
+            {
+                return String("{channel=") + channel.as_string() + ", addr=\"" + addr + "\"}";
+            }
+
+            struct Channel
+            {
+                Channel()
+                {
+                    gpio = gpio_num_t(-1);
+                }
+            
+                void from_json(const JsonVariant & json);
+
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
+                bool is_valid() const 
+                {
+                    return gpio != gpio_num_t(-1);
+                }
+
+                bool operator == (const Channel & channel) const
+                {
+                    return gpio == channel.gpio;
+                }
+
+                String as_string() const
+                {
+                    return String("{gpio=") + String((int)(gpio))+ "}";
+                }
+
+                gpio_num_t gpio;
+                
+            };
+            
+            Channel channel;            
+            String addr;
+
+        };
+        
+        Temp temp;
+
 
 };
