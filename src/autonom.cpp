@@ -10,6 +10,49 @@
 #include <trace.h>
 #include <epromImage.h>
 
+
+class AutonomTaskManager
+{
+    public:
+
+        AutonomTaskManager()
+        {
+        }
+
+        void startShowerGuard(const ShowerGuardConfig &);
+        void stopShowerGuard();
+        void reconfigureShowerGuard(const ShowerGuardConfig &);
+
+    protected:
+
+
+
+};
+
+
+void AutonomTaskManager::startShowerGuard(const ShowerGuardConfig & config)
+{
+    TRACE("Starting autonom task showerGuard")
+}
+
+
+void AutonomTaskManager::stopShowerGuard()
+{
+    TRACE("stopping autonom task showerGuard")
+
+}
+
+
+void AutonomTaskManager::reconfigureShowerGuard(const ShowerGuardConfig & config)
+{
+    TRACE("reconfiguring autonom task showerGuard")
+
+}
+
+
+AutonomTaskManager autonomTaskManager;
+
+
 const char * function_type_2_str(FunctionType ft)
 {
     switch(ft)
@@ -27,6 +70,8 @@ void setupAutonom(const JsonVariant & json)
     TRACE("setupAutonom")
 
     EpromImage epromImage;
+
+    ShowerGuardConfig showerGuardConfig;
 
     if (json.is<JsonArray>())
     {
@@ -52,19 +97,18 @@ void setupAutonom(const JsonVariant & json)
                         DEBUG("contains config")
                         const JsonVariant & config_json = _json["config"];
 
-                        ShowerGuardConfig config;
-                        config.from_json(config_json);
+                        showerGuardConfig.from_json(config_json);
 
-                        TRACE("function %s: config.is_valid=%s", function.c_str(), (config.is_valid() ? "true" : "false"))
-                        TRACE(config.as_string().c_str())
+                        TRACE("function %s: showerGuardConfig.is_valid=%s", function.c_str(), (showerGuardConfig.is_valid() ? "true" : "false"))
+                        TRACE(showerGuardConfig.as_string().c_str())
 
-                        if (config.is_valid())
+                        if (showerGuardConfig.is_valid())
                         {
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
                             std::ostringstream os;
 
-                            config.to_eprom(os);
+                            showerGuardConfig.to_eprom(os);
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
@@ -98,7 +142,27 @@ void setupAutonom(const JsonVariant & json)
             TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
             epromImage.write();
 
-            // TODO: reconfigure running threads
+            for (auto it=added.begin(); it!=added.end(); ++it)
+            {
+                if (*it == ftShowerGuard)
+                {
+                    autonomTaskManager.startShowerGuard(showerGuardConfig);
+                }
+            }
+            for (auto it=removed.begin(); it!=removed.end(); ++it)
+            {
+                if (*it == ftShowerGuard)
+                {
+                    autonomTaskManager.stopShowerGuard();
+                }
+            }
+            for (auto it=changed.begin(); it!=changed.end(); ++it)
+            {
+                if (*it == ftShowerGuard)
+                {
+                    autonomTaskManager.reconfigureShowerGuard(showerGuardConfig);
+                }
+            }
         }
         else
         {
@@ -142,7 +206,10 @@ void restoreAutonom()
                 
                 if (config.from_eprom(is) == true)
                 {
-                    TRACE("Config read ok: %s", config.as_string().c_str())
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startShowerGuard(config);
                 }
                 else
                 {

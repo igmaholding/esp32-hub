@@ -188,9 +188,9 @@ bool EpromImage::diff(const EpromImage & other, std::vector<uint8_t> * added, st
     {
         if (other.blocks.find(it->first) == other.blocks.end())
         {
-            if (removed != NULL)
+            if (added != NULL)
             {
-                removed ->push_back((uint8_t) it->first);
+                added ->push_back((uint8_t) it->first);
             }
             r = true;
         }
@@ -200,9 +200,9 @@ bool EpromImage::diff(const EpromImage & other, std::vector<uint8_t> * added, st
     {
         if (blocks.find(it->first) == blocks.end())
         {
-            if (added != NULL)
+            if (removed != NULL)
             {
-                added->push_back((uint8_t) it->first);
+                removed->push_back((uint8_t) it->first);
             }
             r = true;            
         }

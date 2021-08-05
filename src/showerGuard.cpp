@@ -22,6 +22,18 @@ void ShowerGuardConfig::from_json(const JsonVariant & json)
         const JsonVariant & _json = json["temp"];
         temp.from_json(_json);
     }
+
+    if (json.containsKey("light"))
+    {
+        const JsonVariant & _json = json["light"];
+        light.from_json(_json);
+    }
+
+    if (json.containsKey("fan"))
+    {
+        const JsonVariant & _json = json["fan"];
+        fan.from_json(_json);
+    }
 }
 
 
@@ -31,6 +43,8 @@ void ShowerGuardConfig::to_eprom(std::ostream & os) const
     motion.to_eprom(os);
     rh.to_eprom(os);
     temp.to_eprom(os);
+    light.to_eprom(os);
+    fan.to_eprom(os);
 }
 
 
@@ -45,6 +59,8 @@ bool ShowerGuardConfig::from_eprom(std::istream & is)
         motion.from_eprom(is);
         rh.from_eprom(is);
         temp.from_eprom(is);
+        light.from_eprom(is);
+        fan.from_eprom(is);
         return is_valid() && !is.bad();
     }
     else
@@ -117,9 +133,9 @@ void ShowerGuardConfig::Motion::Channel::to_eprom(std::ostream & os) const
 
 bool ShowerGuardConfig::Motion::Channel::from_eprom(std::istream & is) 
 {
-    uint8_t gpio_uint8 = (uint8_t) -1;
-    is.read((char*) & gpio_uint8, sizeof(gpio_uint8));
-    gpio = (gpio_num_t) gpio_uint8;
+    int8_t gpio_int8 = (int8_t) -1;
+    is.read((char*) & gpio_int8, sizeof(gpio_int8));
+    gpio = (gpio_num_t) gpio_int8;
 
     uint8_t inverted_uint8 = (uint8_t) false;
     is.read((char*) & inverted_uint8, sizeof(inverted_uint8));
@@ -195,9 +211,9 @@ void ShowerGuardConfig::Rh::Channel::to_eprom(std::ostream & os) const
 
 bool ShowerGuardConfig::Rh::Channel::from_eprom(std::istream & is) 
 {
-    uint8_t gpio_uint8 = (uint8_t) -1;
-    is.read((char*) & gpio_uint8, sizeof(gpio_uint8));
-    gpio = (gpio_num_t) gpio_uint8;
+    int8_t gpio_int8 = (int8_t) -1;
+    is.read((char*) & gpio_int8, sizeof(gpio_int8));
+    gpio = (gpio_num_t) gpio_int8;
 
     is.read((char*) & atten, sizeof(atten));
     return is_valid() && !is.bad();
@@ -274,11 +290,128 @@ void ShowerGuardConfig::Temp::Channel::to_eprom(std::ostream & os) const
 
 bool ShowerGuardConfig::Temp::Channel::from_eprom(std::istream & is) 
 {
-    uint8_t gpio_uint8 = (uint8_t) -1;
-    is.read((char*) & gpio_uint8, sizeof(gpio_uint8));
-    gpio = (gpio_num_t) gpio_uint8;
+    int8_t gpio_int8 = (int8_t) -1;
+    is.read((char*) & gpio_int8, sizeof(gpio_int8));
+    gpio = (gpio_num_t) gpio_int8;
     return is_valid() && !is.bad();
 }
 
 
+void ShowerGuardConfig::Light::from_json(const JsonVariant & json)
+{
+    if (json.containsKey("channel"))
+    {
+        const JsonVariant & _json = json["channel"];
+        channel.from_json(_json);
+    }
 
+    if (json.containsKey("mode"))
+    {
+        const char * mode_str = (const char*) json["mode"];
+        mode = str_2_mode(mode_str);
+    }
+}
+
+
+void ShowerGuardConfig::Light::to_eprom(std::ostream & os) const
+{
+    channel.to_eprom(os);
+
+    uint8_t mode_uint8_t = (uint8_t) mode;
+    os.write((const char*) & mode_uint8_t, sizeof(mode_uint8_t));
+}
+
+
+bool ShowerGuardConfig::Light::from_eprom(std::istream & is) 
+{
+    channel.from_eprom(is);
+
+    uint8_t mode_uint8 = mAuto;
+    is.read((char*) & mode_uint8, sizeof(mode_uint8));
+    mode = Mode(mode_uint8);
+
+    return is_valid() && !is.bad();
+}
+
+
+void ShowerGuardConfig::Light::Channel::from_json(const JsonVariant & json)
+{
+    if (json.containsKey("gpio"))
+    {
+        unsigned gpio_unvalidated = (unsigned)((int) json["gpio"]);
+        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
+    } 
+    if (json.containsKey("inverted"))
+    {
+        inverted = json["inverted"];
+    }
+    if (json.containsKey("coilon_active"))
+    {
+        coilon_active = json["coilon_active"];
+    }
+}
+
+
+void ShowerGuardConfig::Light::Channel::to_eprom(std::ostream & os) const
+{
+    uint8_t gpio_uint8 = (uint8_t) gpio;
+    os.write((const char*) & gpio_uint8, sizeof(gpio_uint8));
+
+    uint8_t inverted_uint8 = (uint8_t) inverted;
+    os.write((const char*) & inverted_uint8, sizeof(inverted_uint8));
+
+    uint8_t coilon_active_uint8 = (uint8_t) coilon_active;
+    os.write((const char*) & coilon_active_uint8, sizeof(coilon_active_uint8));
+}
+
+
+bool ShowerGuardConfig::Light::Channel::from_eprom(std::istream & is) 
+{
+    int8_t gpio_int8 = (int8_t) -1;
+    is.read((char*) & gpio_int8, sizeof(gpio_int8));
+    gpio = (gpio_num_t) gpio_int8;
+
+    uint8_t inverted_uint8 = (uint8_t) false;
+    is.read((char*) & inverted_uint8, sizeof(inverted_uint8));
+    inverted = (bool) inverted_uint8;
+
+    uint8_t coilon_active_uint8 = (uint8_t) true;
+    is.read((char*) & coilon_active_uint8, sizeof(coilon_active_uint8));
+    coilon_active = (bool) coilon_active_uint8;
+
+    return is_valid() && !is.bad();
+}
+
+
+void ShowerGuardConfig::Fan::from_json(const JsonVariant & json)
+{
+    Light::from_json(json);
+
+    if (json.containsKey("rh_on"))
+    {
+        rh_on = (uint8_t) (unsigned) json["rh_on"];
+    }
+    if (json.containsKey("rh_off"))
+    {
+        rh_off = (uint8_t) (unsigned) json["rh_off"];
+    }
+}
+
+
+void ShowerGuardConfig::Fan::to_eprom(std::ostream & os) const
+{
+    Light::to_eprom(os);
+    os.write((const char*) & rh_on, sizeof(rh_on));
+    os.write((const char*) & rh_off, sizeof(rh_off));
+}
+
+
+bool ShowerGuardConfig::Fan::from_eprom(std::istream & is) 
+{
+    Light::from_eprom(is);
+
+    is.read((char*) & rh_on, sizeof(rh_on));
+    is.read((char*) & rh_off, sizeof(rh_off));
+
+    return is_valid() && !is.bad();
+}

@@ -46,19 +46,10 @@ RESPONSE:
 REST POST setup
 URL: <base>/setup?reset_stamp=ABCDEF
 BODY: 
-{ "pm":
-    { 
-      "channels":
-      [
-          {
-              "gpio":23, "inverted":true, "debounce":250
-          },
-          {
-              "gpio":25, "inverted":true, "debounce":50
-          }
-      ]
-    }
+{ "pm": <see setup pm>,
+  "autonom": <see setup autonom>
 }
+
 RESPONSE: 
 {
 }
@@ -77,6 +68,25 @@ BODY:
       }
   ]
 }
+
+RESPONSE: 
+{
+}
+
+REST POST setup autonom
+URL: <base>/setup/autonom
+BODY: 
+[{
+    "function":"shower-guard", 
+    "config":{
+    "motion":{"channel":{"gpio":23, "inverted":true, "debounce":250}, "linger":300},
+    "rh":{"vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}}, 
+    "temp":{"channel":{"gpio":4}, "addr":"28-000009079138"}, 
+    "light":{"channel":{"gpio":13, "inverted":true, "coilon_active":false}, "mode":"auto"}, 
+    "fan":{"channel":{"gpio":14, "inverted":true, "coilon_active":false}, "rh_off":50, "rh_on":55, "mode":"auto"} 
+    }
+}]
+
 RESPONSE: 
 {
 }
@@ -90,6 +100,13 @@ RESPONSE:
 
 REST POST cleanup pm
 URL: <base>/cleanup/pm
+BODY: none 
+RESPONSE: 
+{
+}
+
+REST POST cleanup autonom
+URL: <base>/cleanup/autonom
 BODY: none 
 RESPONSE: 
 {
