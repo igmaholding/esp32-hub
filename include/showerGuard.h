@@ -10,15 +10,23 @@ class ShowerGuardConfig
         {
         }
         
+        ShowerGuardConfig & operator = (const ShowerGuardConfig & config) 
+        {
+            motion = config.motion;
+            rh = config.rh;
+            temp = config.temp;
+            light = config.light;
+            fan = config.fan;
+
+            return *this;
+        }
+
         void from_json(const JsonVariant & json);
 
         void to_eprom(std::ostream & os) const;
         bool from_eprom(std::istream & is);
 
-        bool is_valid() const
-        {
-            return motion.is_valid() && rh.is_valid() && temp.is_valid() && light.is_valid() && fan.is_valid();
-        }
+        bool is_valid() const;
 
         bool operator == (const ShowerGuardConfig & config) const
         {
@@ -106,6 +114,7 @@ class ShowerGuardConfig
         {
             Rh()
             {
+                corr = 0;
             }
 
             void from_json(const JsonVariant & json);
@@ -120,12 +129,12 @@ class ShowerGuardConfig
 
             bool operator == (const Rh & rh) const
             {
-                return vad == rh.vad && vdd == rh.vdd;
+                return vad == rh.vad && vdd == rh.vdd && corr == rh.corr;
             }
 
             String as_string() const
             {
-                return String("{vad=") + vad.as_string() + ", vdd=" + vdd.as_string() + "}";
+                return String("{vad=") + vad.as_string() + ", vdd=" + vdd.as_string() + ", corr=" + corr + "}";
             }
 
             struct Channel
@@ -163,6 +172,7 @@ class ShowerGuardConfig
             
             Channel vad;
             Channel vdd;
+            float corr;
             
         };
         
@@ -172,6 +182,7 @@ class ShowerGuardConfig
         {
             Temp()
             {
+                corr = 0;
             }
 
             void from_json(const JsonVariant & json);
@@ -187,12 +198,12 @@ class ShowerGuardConfig
 
             bool operator == (const Temp & temp) const
             {
-                return channel == temp.channel && addr == temp.addr;
+                return channel == temp.channel && addr == temp.addr && corr == temp.corr;
             }
 
             String as_string() const
             {
-                return String("{channel=") + channel.as_string() + ", addr=\"" + addr + "\"}";
+                return String("{channel=") + channel.as_string() + ", addr=\"" + addr + "\", corr=" + corr + "}";
             }
 
             struct Channel
@@ -228,6 +239,7 @@ class ShowerGuardConfig
             
             Channel channel;            
             String addr;
+            float corr;
 
         };
         
@@ -345,6 +357,16 @@ class ShowerGuardConfig
             const uint8_t RH_ON = 55;
             const uint8_t RH_OFF = 50;
 
+            Fan & operator = (const Fan & fan) 
+            {
+                Light::operator = (fan);
+                
+                rh_on = fan.rh_on;
+                rh_off = fan.rh_off;
+                
+                return *this;
+            }
+
             Fan()
             {
                 rh_on = RH_ON;
@@ -380,3 +402,28 @@ class ShowerGuardConfig
         
         Fan fan;
 };
+
+
+struct ShowerGuardStatus
+{
+    ShowerGuardStatus()
+    {
+        temp = 0;
+        rh = 0;
+        motion = false;
+        light = false;
+        fan = false;
+    }
+
+    float temp;
+    float rh;
+    bool motion;
+    bool light;
+    bool fan;
+};
+
+void start_shower_guard_task(const ShowerGuardConfig &);
+void stop_shower_guard_task();
+ShowerGuardStatus get_shower_guard_status();
+
+void reconfigure_shower_guard(const ShowerGuardConfig &);

@@ -97,6 +97,36 @@ native_gpio_interrupt_handler_t get_gpio_interrupt_handler(gpio_num_t num)
 std::map<gpio_num_t, GpioChannel> GpioHandler::gpioChannels;
 
 
+bool GpioChannel::read() const
+{
+    return read(gpioNum, inverted);
+}
+
+void GpioChannel::write(bool value) const
+{
+    write(gpioNum, inverted, value);
+}
+
+
+bool GpioChannel::read(gpio_num_t _gpioNum, bool _inverted) 
+{
+    if (digitalRead(_gpioNum) == HIGH)
+    {
+        return _inverted ? false : true;
+    }
+    else
+    {
+        return _inverted ? true : false;
+    }
+}
+
+void GpioChannel::write(gpio_num_t _gpioNum, bool _inverted, bool value) 
+{
+    bool value_to_write = _inverted ? (value ? LOW : HIGH) : (value ? HIGH : LOW);
+    digitalWrite(_gpioNum, value_to_write);
+}
+
+
 gpio_num_t GpioChannel::validateGpioNum(unsigned unvalidatedGpioNum)
 {
     switch(unvalidatedGpioNum)
@@ -124,6 +154,104 @@ gpio_num_t GpioChannel::validateGpioNum(unsigned unvalidatedGpioNum)
         case GPIO_NUM_MAX: break;
     }
   return gpio_num_t(-1);
+}
+
+
+bool GpioCheckpad::set_usage(gpio_num_t gpio, Usage usage)
+{
+    // returns false if the usage does not match capabilities, no changes will be made to the map
+
+    if (GpioChannel::validateGpioNum(gpio) != gpio_num_t(-1) && gpio < sizeof(usage_map)/sizeof(usage_map[0]))
+    {
+        if ((unsigned)(usage & get_capabilities(gpio)) == (unsigned)usage)  // check if we intersect usage and capabilities, all usage bits are still not cleared
+        {
+            usage_map[gpio] = usage;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+GpioCheckpad::Usage GpioCheckpad::get_usage(gpio_num_t gpio) const
+{
+    if (GpioChannel::validateGpioNum(gpio) != gpio_num_t(-1) && gpio < sizeof(usage_map)/sizeof(usage_map[0]))
+    {
+        return usage_map[gpio];
+    }
+
+    return uInvalid;
+}
+
+
+GpioCheckpad::Usage GpioCheckpad::get_capabilities(gpio_num_t gpio)
+{
+    // ADC2 should not be used together with WIFI!
+
+    if (GpioChannel::validateGpioNum(gpio) != gpio_num_t(-1))
+    {
+        switch(gpio)
+        {
+            case GPIO_NUM_0: return uAllOutput;        // ADC2 
+            case GPIO_NUM_1: return uDigitalOutput;
+            case GPIO_NUM_2: return uAll;              // ADC2
+            case GPIO_NUM_3: return uDigitalInput;            
+            case GPIO_NUM_4: return uAll;              // ADC2
+            case GPIO_NUM_5: return uDigitalAll;            
+            case GPIO_NUM_6: 
+            case GPIO_NUM_7: 
+            case GPIO_NUM_8: 
+            case GPIO_NUM_9: 
+            case GPIO_NUM_10: 
+            case GPIO_NUM_11: return uNone;
+            case GPIO_NUM_12:                           // ADC2
+            case GPIO_NUM_13:                           // ADC2
+            case GPIO_NUM_14:                           // ADC2
+            case GPIO_NUM_15: return uAll;              // ADC2
+            case GPIO_NUM_16: 
+            case GPIO_NUM_17: 
+            case GPIO_NUM_18: 
+            case GPIO_NUM_19: return uDigitalAll; 
+            // case GPIO_NUM_20: return uNone;
+            case GPIO_NUM_21: 
+            case GPIO_NUM_22: 
+            case GPIO_NUM_23: return uDigitalAll;
+            //case GPIO_NUM_24: return uNone;
+            case GPIO_NUM_25:                           // ADC2
+            case GPIO_NUM_26:                           // ADC2
+            case GPIO_NUM_27: return uAll;              // ADC2  
+            //case GPIO_NUM_28: 
+            //case GPIO_NUM_29: 
+            //case GPIO_NUM_30: 
+            //case GPIO_NUM_31: 
+            case GPIO_NUM_32: 
+            case GPIO_NUM_33: return uAll;         // ADC1
+            case GPIO_NUM_34:                      // ADC1
+            case GPIO_NUM_35:                      // ADC1
+            case GPIO_NUM_36:                      // ADC1
+            case GPIO_NUM_37:                      // ADC1 
+            case GPIO_NUM_38:                      // ADC1
+            case GPIO_NUM_39: return uAllInput;    // ADC1
+            case GPIO_NUM_MAX: break;
+        }
+    }
+
+    return uNone;
+}
+
+
+adc_attenuation_t GpioCheckpad::check_attenuation(int atten)
+{
+    switch(atten)
+    {
+        case ADC_0db:
+        case ADC_2_5db:
+        case ADC_6db:
+        case ADC_11db: return adc_attenuation_t(atten);
+    }
+
+    return adc_attenuation_t(-1);
 }
 
 
@@ -214,4 +342,17 @@ void GpioHandler::enumerateChannels(std::vector<gpio_num_t> & list) const
     list.push_back(iterator->first);
     ++iterator;
   }
+}
+
+
+const GpioChannel * GpioHandler::getChannel(gpio_num_t gpioNum)
+{
+  auto iterator = gpioChannels.find(gpioNum);
+
+  if (iterator != gpioChannels.end())
+  {
+      return & iterator->second;
+  }
+
+  return NULL;
 }

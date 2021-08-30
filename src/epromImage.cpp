@@ -216,7 +216,7 @@ bool EpromImage::diff(const EpromImage & other, std::vector<uint8_t> * added, st
         
         if (other_it != other.blocks.end())
         {
-            if (it->second != other_it->second)
+            if (!(it->second == other_it->second))
             {
                 if (changed != NULL)
                 {

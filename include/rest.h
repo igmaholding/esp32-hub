@@ -8,12 +8,14 @@ String restSetupAutonom(const String & body);
 
 String restCleanup();
 String restCleanupPm();
+String restCleanupAutonom();
 
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);
 
 String restGet(const String & resetStamp);
 String restGetPm(const String & resetStamp);
+String restGetAutonom();
 
 String restPopLog();
 

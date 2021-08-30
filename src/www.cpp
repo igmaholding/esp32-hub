@@ -264,8 +264,15 @@ void on_setup_autonom()
   
   String r = restSetupAutonom(body);  
   
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = true;
+  if (r.length() == 0)
+  {
+    webServer.send(200, "application/json", "{}");
+    led_configured = true;
+  }
+  else
+  {
+    webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+  }
 }
 
 
@@ -280,6 +287,14 @@ void on_cleanup()
 void on_cleanup_pm() 
 {
   String r = restCleanupPm();  
+  webServer.send(200, "application/json", r.c_str());
+  led_configured = false;
+}
+
+
+void on_cleanup_autonom() 
+{
+  String r = restCleanupAutonom();  
   webServer.send(200, "application/json", r.c_str());
   led_configured = false;
 }
@@ -333,6 +348,7 @@ void on_get()
 void on_get_pm() 
 {
   String resetStamp;
+  DEBUG("on_get_pm")
 
   if (webServer.hasArg("reset_stamp") == true) 
   {
@@ -340,6 +356,15 @@ void on_get_pm()
   }
 
   String r = restGetPm(resetStamp);  
+  webServer.send(200, "application/json", r.c_str());
+  led_blink_once = true;
+}
+
+
+void on_get_autonom() 
+{
+  DEBUG("on_get_autonom")
+  String r = restGetAutonom();  
   webServer.send(200, "application/json", r.c_str());
   led_blink_once = true;
 }
@@ -363,10 +388,12 @@ void wwwSetupRouting()
   webServer.on("/setup/autonom", HTTP_POST, on_setup_autonom);
   webServer.on("/cleanup", HTTP_POST, on_cleanup);
   webServer.on("/cleanup/pm", HTTP_POST, on_cleanup_pm);
+  webServer.on("/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
   webServer.on("/reset", HTTP_POST, on_reset);
   webServer.on("/reset/pm", HTTP_POST, on_reset_pm);
   webServer.on("/get", HTTP_GET, on_get);
   webServer.on("/get/pm", HTTP_GET, on_get_pm);
+  webServer.on("/get/autonom", HTTP_GET, on_get_autonom);
   webServer.on("/poplog", HTTP_GET, on_pop_log);
  }
 

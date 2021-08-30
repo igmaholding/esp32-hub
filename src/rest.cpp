@@ -101,9 +101,9 @@ String restSetupAutonom(const String & body)
 
   deserializeJson(jsonDocument, body);
 
-  setupAutonom(jsonDocument.as<JsonVariant>());
+  String none_or_error = setupAutonom(jsonDocument.as<JsonVariant>());
   
-  return String("{}");
+  return none_or_error;
 }
 
 
@@ -112,6 +112,7 @@ String restCleanup()
   TRACE("REST cleanup")
 
   cleanupPm();
+  cleanupAutonom();
 
   return String("{}");
 }
@@ -122,6 +123,16 @@ String restCleanupPm()
   TRACE("REST cleanup PM")
 
   cleanupPm();
+
+  return String("{}");
+}
+
+
+String restCleanupAutonom() 
+{
+  TRACE("REST cleanup autonom")
+
+  cleanupAutonom();
 
   return String("{}");
 }
@@ -158,6 +169,9 @@ String restGet(const String & resetStamp)
   jsonDocument.createNestedObject("pm");
   JsonVariant pmJsonVariant = jsonDocument["pm"];
   getPm(pmJsonVariant, resetStamp);
+  jsonDocument.createNestedObject("autonom");
+  JsonVariant autonomJsonVariant = jsonDocument["autonom"];
+  getAutonom(autonomJsonVariant);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -172,6 +186,20 @@ String restGetPm(const String & resetStamp)
 
   JsonVariant pmJsonVariant = jsonDocument.as<JsonVariant>();
   getPm(pmJsonVariant, resetStamp);
+
+  serializeJson(jsonDocument, _buffer); 
+  return String(_buffer);
+}
+
+
+String restGetAutonom() 
+{
+  TRACE("REST get AUTONOM")
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  JsonVariant autonomJsonVariant = jsonDocument.as<JsonVariant>();
+  getAutonom(autonomJsonVariant);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);

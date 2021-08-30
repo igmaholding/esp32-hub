@@ -17,15 +17,23 @@ class AutonomTaskManager
 
         AutonomTaskManager()
         {
+            showerGuardActive = false;
         }
 
         void startShowerGuard(const ShowerGuardConfig &);
         void stopShowerGuard();
         void reconfigureShowerGuard(const ShowerGuardConfig &);
 
+        ShowerGuardStatus getShowerGuardStatus() const;
+
+        bool isShowerGuardActive() const { return showerGuardActive; }
+
+        void stopAll();
+
+
     protected:
 
-
+        bool showerGuardActive;
 
 };
 
@@ -33,20 +41,41 @@ class AutonomTaskManager
 void AutonomTaskManager::startShowerGuard(const ShowerGuardConfig & config)
 {
     TRACE("Starting autonom task showerGuard")
+    start_shower_guard_task(config);
+    showerGuardActive = true;
 }
 
 
 void AutonomTaskManager::stopShowerGuard()
 {
     TRACE("stopping autonom task showerGuard")
-
+    stop_shower_guard_task();
+    showerGuardActive = false;
 }
 
 
 void AutonomTaskManager::reconfigureShowerGuard(const ShowerGuardConfig & config)
 {
     TRACE("reconfiguring autonom task showerGuard")
+    reconfigure_shower_guard(config);
+}
 
+
+ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
+{
+    TRACE("getShowerGuardStatuss")
+    return get_shower_guard_status();
+}
+
+
+void AutonomTaskManager::stopAll()
+{
+    TRACE("stopping all autonom tasks")
+
+    if (showerGuardActive)
+    {
+        stopShowerGuard();
+    }
 }
 
 
@@ -65,11 +94,12 @@ const char * function_type_2_str(FunctionType ft)
 }
 
 
-void setupAutonom(const JsonVariant & json) 
+String setupAutonom(const JsonVariant & json) 
 {
     TRACE("setupAutonom")
 
     EpromImage epromImage;
+    char buf[256];
 
     ShowerGuardConfig showerGuardConfig;
 
@@ -114,20 +144,32 @@ void setupAutonom(const JsonVariant & json)
                             TRACE("block size %d", (int) os.tellp())
                             epromImage.blocks.insert({(uint8_t) ftShowerGuard, buffer});
                         }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
                     }
                     else
                     {
-                        ERROR("payload item with function %s should contain config", function.c_str())
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
                     }
                 }
                 else
                 {
-                    ERROR("function %s is unknown", function.c_str())
+                    sprintf(buf, "function %s is unknown", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
                 }
             }
             else
             {
-                ERROR("payload item does NOT contain function")
+                const char * str = "payload item does NOT contain function";
+                ERROR(str)
+                return String(str);
             }
             ++iterator;
         }
@@ -172,14 +214,54 @@ void setupAutonom(const JsonVariant & json)
     }
     else
     {
-        ERROR("payload is NOT array")
+        const char * str = "payload is NOT array";
+        ERROR(str)
+        return String(str);
     }
+
+    return String();
 }
 
 
 void cleanupAutonom() 
 {
-  TRACE("cleanupAutonom")
+    TRACE("cleanupAutonom")
+
+    // remove all functions from EEPROM 
+
+    EpromImage epromImage, currentEpromImage; 
+    currentEpromImage.read();
+
+    std::vector<uint8_t> added, removed, changed;
+
+    if (epromImage.diff(currentEpromImage, & added, & removed, & changed) == true)
+    {
+        TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
+        epromImage.write();
+    }
+
+    // stop all running tasks
+        
+    autonomTaskManager.stopAll();
+}
+
+
+void getAutonom(JsonVariant & json)
+{
+  TRACE("getAutonom")
+
+  if (autonomTaskManager.isShowerGuardActive())
+  {
+        ShowerGuardStatus status = autonomTaskManager.getShowerGuardStatus();
+        json.createNestedObject("shower-guard");
+        JsonVariant jsonVariant = json["shower-guard"];
+
+        jsonVariant["temp"] = status.temp;
+        jsonVariant["rh"] = status.rh;
+        jsonVariant["motion"] = status.motion;
+        jsonVariant["light"] = status.light;
+        jsonVariant["fan"] = status.fan;
+  }
 }
 
 

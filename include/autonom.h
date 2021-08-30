@@ -1,7 +1,8 @@
 #include <ArduinoJson.h>
 
-void setupAutonom(const JsonVariant &);
+String setupAutonom(const JsonVariant &); // returns non-empty string with error message if error
 void cleanupAutonom();
+void getAutonom(JsonVariant &);
 
 void restoreAutonom(); // from EPROM
 
