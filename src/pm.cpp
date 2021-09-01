@@ -307,32 +307,36 @@ void resetPm(const String & reset_stamp)
 
 void getPm(JsonVariant & json, const String & reset_stamp)
 {
-  TRACE("getPm")
+    TRACE("getPm")
   
-  json["reset_stamp"] = pmHandler.reset_stamp;
-  json["is_configured"] = pmHandler.is_configured;
+    json["is_configured"] = pmHandler.is_configured;
 
-  json.createNestedArray("gpio");
-  json.createNestedArray("counter");
-  JsonArray jsonArrayGpio = json["gpio"]; 
-  JsonArray jsonArrayCounter = json["counter"]; 
+    if (pmHandler.is_configured)
+    {
+        json["reset_stamp"] = pmHandler.reset_stamp;
 
-  std::vector<gpio_num_t> gpio_num_list;
-  pmHandler.enumerateChannels(gpio_num_list);
+        json.createNestedArray("gpio");
+        json.createNestedArray("counter");
+        JsonArray jsonArrayGpio = json["gpio"]; 
+        JsonArray jsonArrayCounter = json["counter"]; 
 
-  auto iterator = gpio_num_list.begin();
+        std::vector<gpio_num_t> gpio_num_list;
+        pmHandler.enumerateChannels(gpio_num_list);
 
-  while(iterator != gpio_num_list.end())
-  {
-    counter = pmHandler.getCounter(*iterator);
-    jsonArrayGpio.add((unsigned) *iterator);
-    jsonArrayCounter.add(counter);
-    ++iterator;
-  }
+        auto iterator = gpio_num_list.begin();
 
-  if (reset_stamp.isEmpty() == false)  // ordered reset after get
-  {
-    DEBUG("reset with get, reset_stamp %s", reset_stamp.c_str())
-    pmHandler.reset(reset_stamp);
-  }
+        while(iterator != gpio_num_list.end())
+        {
+            counter = pmHandler.getCounter(*iterator);
+            jsonArrayGpio.add((unsigned) *iterator);
+            jsonArrayCounter.add(counter);
+            ++iterator;
+        }
+
+        if (reset_stamp.isEmpty() == false)  // ordered reset after get
+        {
+            DEBUG("reset with get, reset_stamp %s", reset_stamp.c_str())
+            pmHandler.reset(reset_stamp);
+        }
+    }
 }

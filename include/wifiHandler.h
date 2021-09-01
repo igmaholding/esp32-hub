@@ -54,4 +54,5 @@ class WifiHandler
 
       std::map<String, WifiNetwork> scannedNetworks;
       WifiNetwork connectedNetwork;
+      String lastFailedNetworkName;
 };

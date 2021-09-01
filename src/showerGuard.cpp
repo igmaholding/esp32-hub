@@ -618,8 +618,8 @@ class ShowerGuardHandler
 {
   public:
 
-        static const unsigned TEMP_READ_SLOT = 30;
-        static const unsigned RH_READ_SLOT = 1;
+        static const unsigned TEMP_READ_SLOT = 60;
+        static const unsigned RH_READ_SLOT = 10;
         static const unsigned MOTION_HYS = 10;
         static const unsigned LOGGING_SLOT = 60;
 
@@ -914,14 +914,14 @@ void ShowerGuardHandler::task(void * parameter)
     unsigned rh_read_slot_count = 0;
     unsigned logging_slot_count = 0;
 
-    float rh = 0;
+    float rh = 60.0;
 
     // we average several samples and feed in algo once per average ready; this is because a considerable fluctuation of readings
 
-    float rh_avg_window[10];
+    float rh_avg_window[5];
     size_t rh_avg_window_pos = 0;
 
-    float temp = 0;
+    float temp = 20.0;
 
     // here is a short hysteresis loop for motion since the sensor would reset to 0 after its internal timeout even if the 
     // motion continues
@@ -980,6 +980,9 @@ void ShowerGuardHandler::task(void * parameter)
 
                     new_rh /=  sizeof(rh_avg_window)/sizeof(rh_avg_window[0]);
                 
+                    new_rh = round(new_rh * 10.0) / 10.0;
+
+
                     if (abs(new_rh - rh) >= 1.0)
                     {
                         logging_slot_count = 0;
@@ -1252,7 +1255,7 @@ bool ShowerGuardHandler::read_temp(float & temp)
 
             if (!strcmp(addr_str, config.temp.addr.c_str()))
             {
-                r_temp = i_temp;
+                r_temp = round(i_temp * 10.0) / 10.0;
 
                 if (config.temp.corr != 0)
                 {

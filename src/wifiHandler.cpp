@@ -91,6 +91,7 @@ bool WifiHandler::connectStrongest(const std::vector<std::pair<String, String>> 
 
     if (matched.empty() == false)
     {
+        
       // start from the strongest but try all until success if the stronger ones are having problems (e.g. password incorrect)      
 
       for (auto matchedRIterator = matched.rbegin(); matchedRIterator != matched.rend(); --matchedRIterator)
@@ -116,6 +117,7 @@ bool WifiHandler::connect(const String name, const String password)
   
   const int MAX_RETRIES = 10; 
   int retries = 0;
+  lastFailedNetworkName = name;
 
   while (true)
   {
@@ -124,6 +126,7 @@ bool WifiHandler::connect(const String name, const String password)
     if (status == WL_CONNECTED) 
     {
       TRACE("Connected. IP: %s", WiFi.localIP().toString().c_str());
+      lastFailedNetworkName.clear();
       return true;
     }
 

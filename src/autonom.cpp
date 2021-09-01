@@ -63,7 +63,7 @@ void AutonomTaskManager::reconfigureShowerGuard(const ShowerGuardConfig & config
 
 ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
 {
-    TRACE("getShowerGuardStatuss")
+    TRACE("getShowerGuardStatus")
     return get_shower_guard_status();
 }
 
