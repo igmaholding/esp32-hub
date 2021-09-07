@@ -1152,7 +1152,7 @@ void ShowerGuardHandler::configure_hw_fan(const ShowerGuardConfig::Fan & fan)
 unsigned ShowerGuardHandler::analog_read(uint8_t gpio)
 {
     adcAttachPin(gpio);
-    adcStart(gpio);
+    /* adcStart(gpio);
     
     int max_attempts = 10;
 
@@ -1166,9 +1166,9 @@ unsigned ShowerGuardHandler::analog_read(uint8_t gpio)
             ERROR("Timeout reading adc, gpio=%d", (int) gpio)
             return 0;
         }
-    }
+    } */
     
-    return adcEnd(gpio);
+    return analogRead(gpio);
 }
 
 
