@@ -702,22 +702,24 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 
     update_rh_window(rh);
 
-    bool motion_l = false;
+    bool motion_light = false;
+    bool motion_fan = false;
 
     if (motion)
     {
-        motion_l = true;
+        motion_light = true;
+        motion_fan = true;
         last_motion_millis = now;
     }
     else
     {
         if (((now - last_motion_millis)/1000) < motion_linger)
         {
-            motion_l = true;
+            motion_fan = true;
         }
     }
 
-    light = motion_l;
+    light = motion_light;
 
     bool last_rh_toggle = rh_toggle;
 
@@ -747,7 +749,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
         // DEBUG("rh_toggle=%d", (int) rh_toggle)
     }
 
-    if (motion_l)
+    if (motion_fan)
     {
         fan = true;
     }
