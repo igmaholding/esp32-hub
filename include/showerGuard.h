@@ -4,7 +4,7 @@ class ShowerGuardConfig
 {
     public:
 
-        const uint8_t EPROM_VERSION = 1;
+        const uint8_t EPROM_VERSION = 2;
 
         ShowerGuardConfig()
         {
@@ -45,7 +45,6 @@ class ShowerGuardConfig
         {
             Motion()
             {
-                linger = 60; // seconds
             }
 
             void from_json(const JsonVariant & json);
@@ -60,12 +59,12 @@ class ShowerGuardConfig
 
             bool operator == (const Motion & motion) const
             {
-                return channel == motion.channel && linger == motion.linger;
+                return channel == motion.channel;
             }
 
             String as_string() const
             {
-                return String("{channel=") + channel.as_string() + ", linger=" + String(linger) + "}";
+                return String("{channel=") + channel.as_string() + "}";
             }
 
             struct Channel
@@ -104,7 +103,6 @@ class ShowerGuardConfig
             };
             
             Channel channel;            
-            uint16_t linger;
 
         };
         
@@ -287,6 +285,8 @@ class ShowerGuardConfig
             Light()
             {
                 mode = mAuto; 
+                linger = 60; // seconds
+
             }
 
             void from_json(const JsonVariant & json);
@@ -301,12 +301,12 @@ class ShowerGuardConfig
 
             bool operator == (const Light & light) const
             {
-                return channel == light.channel && mode == light.mode;
+                return channel == light.channel && mode == light.mode  && linger == light.linger;
             }
 
             String as_string() const
             {
-                return String("{channel=") + channel.as_string() + ", mode=" + mode_2_str(mode) + "}";
+                return String("{channel=") + channel.as_string() + ", mode=" + mode_2_str(mode)  + ", linger=" + String(linger) + "}";
             }
 
             struct Channel
@@ -347,7 +347,7 @@ class ShowerGuardConfig
             
             Channel channel;            
             Mode mode;
-
+            uint16_t linger;
         };
         
         Light light;

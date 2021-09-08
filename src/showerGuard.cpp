@@ -213,25 +213,18 @@ void ShowerGuardConfig::Motion::from_json(const JsonVariant & json)
         const JsonVariant & _json = json["channel"];
         channel.from_json(_json);
     }
-
-    if (json.containsKey("linger"))
-    {
-        linger = (unsigned)((int) json["linger"]);
-    }
 }
 
 
 void ShowerGuardConfig::Motion::to_eprom(std::ostream & os) const
 {
     channel.to_eprom(os);
-    os.write((const char*) & linger, sizeof(linger));
 }
 
 
 bool ShowerGuardConfig::Motion::from_eprom(std::istream & is) 
 {
     channel.from_eprom(is);
-    is.read((char*) & linger, sizeof(linger));
     return is_valid() && !is.bad();
 }
 
@@ -462,6 +455,12 @@ void ShowerGuardConfig::Light::from_json(const JsonVariant & json)
         const char * mode_str = (const char*) json["mode"];
         mode = str_2_mode(mode_str);
     }
+    
+    if (json.containsKey("linger"))
+    {
+        linger = (unsigned)((int) json["linger"]);
+    }
+
 }
 
 
@@ -471,6 +470,7 @@ void ShowerGuardConfig::Light::to_eprom(std::ostream & os) const
 
     uint8_t mode_uint8_t = (uint8_t) mode;
     os.write((const char*) & mode_uint8_t, sizeof(mode_uint8_t));
+    os.write((const char*) & linger, sizeof(linger));
 }
 
 
@@ -481,6 +481,7 @@ bool ShowerGuardConfig::Light::from_eprom(std::istream & is)
     uint8_t mode_uint8 = mAuto;
     is.read((char*) & mode_uint8, sizeof(mode_uint8));
     mode = Mode(mode_uint8);
+    is.read((char*) & linger, sizeof(linger));
 
     return is_valid() && !is.bad();
 }
@@ -607,7 +608,8 @@ class ShowerGuardAlgo
 
         bool rh_toggle;
 
-        unsigned motion_linger;
+        unsigned light_linger;
+        unsigned fan_linger;
         unsigned rh_off, rh_on;
         ShowerGuardConfig::Light::Mode light_mode;
         ShowerGuardConfig::Light::Mode fan_mode;
@@ -683,7 +685,8 @@ void ShowerGuardAlgo::start(const ShowerGuardConfig & config)
 
 void ShowerGuardAlgo::reconfigure(const ShowerGuardConfig & config)
 {
-    motion_linger = config.motion.linger;
+    light_linger = config.light.linger;
+    fan_linger = config.fan.linger;
 
     rh_off = config.fan.rh_off;
     rh_on = config.fan.rh_on;
@@ -713,7 +716,12 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     }
     else
     {
-        if (((now - last_motion_millis)/1000) < motion_linger)
+        if (((now - last_motion_millis)/1000) < light_linger)
+        {
+            motion_light = true;
+        }
+
+        if (((now - last_motion_millis)/1000) < fan_linger)
         {
             motion_fan = true;
         }
@@ -778,7 +786,8 @@ void ShowerGuardAlgo::init()
     rh_toggle = false;
     reset_rh_window();
 
-    motion_linger = 0;
+    light_linger = 0;
+    fan_linger = 0;
     rh_off = 0;
     rh_on = 0;
     light_mode = ShowerGuardConfig::Light::mAuto;
