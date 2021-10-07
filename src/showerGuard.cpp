@@ -589,8 +589,8 @@ class ShowerGuardAlgo
         bool get_light() const { return light; }
         bool get_fan() const { return fan; }
 
-        const char * get_last_light_decision() const { return last_light_decision; }
-        const char * get_last_fan_decision() const { return last_fan_decision; }
+        const char * get_last_light_decision() const; 
+        const char * get_last_fan_decision() const; 
 
   protected:
 
@@ -617,8 +617,8 @@ class ShowerGuardAlgo
         ShowerGuardConfig::Light::Mode light_mode;
         ShowerGuardConfig::Light::Mode fan_mode;
 
-        const char * last_light_decision;
-        const char * last_fan_decision;
+        const char * last_light_decision[2]; // 2 levels
+        const char * last_fan_decision[3]; // 3 levels
 };
 
 
@@ -734,19 +734,19 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     }
 
     light = motion_light;
-    last_light_decision = "motion";
+    last_light_decision[0] = "motion";
 
     bool last_rh_toggle = rh_toggle;
 
     if (rh >= rh_on)
     {
         rh_toggle = true;
-        last_fan_decision = "rh-high";
+        last_fan_decision[0] = "rh-high";
     }
     else if (rh <= rh_off)
     {
         rh_toggle = false;
-        last_fan_decision = "rh-low";
+        last_fan_decision[0] = "rh-low";
     }
     else
     {
@@ -756,7 +756,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
             {
                 TRACE("Soft rh_toggle condition")
                 rh_toggle = false;
-               last_fan_decision = "rh-soft-down";
+               last_fan_decision[0] = "rh-soft-down";
             }
 
         }
@@ -770,24 +770,60 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     if (motion_fan)
     {
         fan = true;
-        last_fan_decision = "motion";
+        last_fan_decision[1] = "motion";
     }
     else
     {
+        last_fan_decision[1] = "";
         fan = rh_toggle;
     }
 
     if (light_mode != ShowerGuardConfig::Light::mAuto)
     {
         light = light_mode == ShowerGuardConfig::Light::mOn ? true : false;
-        last_light_decision = "nonauto-mode";
+        last_light_decision[1] = "nonauto-mode";
+    }
+    else
+    {
+        last_light_decision[1] = "";
     }
 
     if (fan_mode != ShowerGuardConfig::Light::mAuto)
     {
         fan = fan_mode == ShowerGuardConfig::Fan::mOn ? true : false;
-        last_fan_decision = "nonauto-mode";
+        last_fan_decision[2] = "nonauto-mode";
     }
+    else
+    {
+        last_fan_decision[2] = "";
+    }
+}
+
+
+const char * ShowerGuardAlgo::get_last_light_decision() const 
+{
+    for (size_t i = sizeof(last_light_decision)/sizeof(last_light_decision[0])-1; i>=0; --i)
+    {
+        if (last_light_decision[i][0])
+        {
+            return last_light_decision[i];
+        }
+    }
+
+    return "";
+}
+
+const char * ShowerGuardAlgo::get_last_fan_decision() const 
+{
+    for (size_t i = sizeof(last_fan_decision)/sizeof(last_fan_decision[0])-1; i>=0; --i)
+    {
+        if (last_fan_decision[i][0])
+        {
+            return last_fan_decision[i];
+        }
+    }
+
+    return "";
 }
 
 
@@ -805,8 +841,16 @@ void ShowerGuardAlgo::init()
     rh_on = 0;
     light_mode = ShowerGuardConfig::Light::mAuto;
     fan_mode = ShowerGuardConfig::Light::mAuto;
-    last_light_decision = "";
-    last_fan_decision = "";
+
+    for (size_t i = 0; i<sizeof(last_light_decision)/sizeof(last_light_decision[0]); ++i)
+    {
+        last_light_decision[i] = "";
+    }
+
+    for (size_t i = 0; i<sizeof(last_fan_decision)/sizeof(last_fan_decision[0]); ++i)
+    {
+        last_fan_decision[i] = "";
+    }
 }
 
 
