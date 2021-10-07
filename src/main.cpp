@@ -37,6 +37,7 @@ void initKnownNetworks()
   knownNetworks.push_back(std::make_pair(String("igmagarpgarden4"), String("IGMASoder1")));
   knownNetworks.push_back(std::make_pair(String("igmagarpgarden5"), String("IGMASoder1")));
   knownNetworks.push_back(std::make_pair(String("igmagarpgarden6"), String("IGMASoder1")));
+  knownNetworks.push_back(std::make_pair(String("igmagarpgarden11"), String("IGMASoder1")));
 
   knownNetworks.push_back(std::make_pair(String("dlink-15A8"), String("uiacw71798")));
   knownNetworks.push_back(std::make_pair(String("dlink-15A8-route"), String("uiacw71798")));
