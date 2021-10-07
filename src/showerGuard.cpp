@@ -589,6 +589,9 @@ class ShowerGuardAlgo
         bool get_light() const { return light; }
         bool get_fan() const { return fan; }
 
+        const char * get_last_light_decision() const { return last_light_decision; }
+        const char * get_last_fan_decision() const { return last_fan_decision; }
+
   protected:
 
         void init();
@@ -613,6 +616,9 @@ class ShowerGuardAlgo
         unsigned rh_off, rh_on;
         ShowerGuardConfig::Light::Mode light_mode;
         ShowerGuardConfig::Light::Mode fan_mode;
+
+        const char * last_light_decision;
+        const char * last_fan_decision;
 };
 
 
@@ -728,16 +734,19 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     }
 
     light = motion_light;
+    last_light_decision = "motion";
 
     bool last_rh_toggle = rh_toggle;
 
     if (rh >= rh_on)
     {
         rh_toggle = true;
+        last_fan_decision = "rh-high";
     }
     else if (rh <= rh_off)
     {
         rh_toggle = false;
+        last_fan_decision = "rh-low";
     }
     else
     {
@@ -747,6 +756,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
             {
                 TRACE("Soft rh_toggle condition")
                 rh_toggle = false;
+               last_fan_decision = "rh-soft-down";
             }
 
         }
@@ -760,6 +770,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     if (motion_fan)
     {
         fan = true;
+        last_fan_decision = "motion";
     }
     else
     {
@@ -769,11 +780,13 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     if (light_mode != ShowerGuardConfig::Light::mAuto)
     {
         light = light_mode == ShowerGuardConfig::Light::mOn ? true : false;
+        last_light_decision = "nonauto-mode";
     }
 
     if (fan_mode != ShowerGuardConfig::Light::mAuto)
     {
         fan = fan_mode == ShowerGuardConfig::Fan::mOn ? true : false;
+        last_fan_decision = "nonauto-mode";
     }
 }
 
@@ -792,6 +805,8 @@ void ShowerGuardAlgo::init()
     rh_on = 0;
     light_mode = ShowerGuardConfig::Light::mAuto;
     fan_mode = ShowerGuardConfig::Light::mAuto;
+    last_light_decision = "";
+    last_fan_decision = "";
 }
 
 
@@ -1081,7 +1096,8 @@ void ShowerGuardHandler::task(void * parameter)
         if (logging_slot_count == 0)
         {
             logging_slot_count = LOGGING_SLOT;
-            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d}", temp, rh, (int)motion_hys, (int)light, (int)fan)
+            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d (%s), \"fan\":%d (%s)}", temp, rh, (int)motion_hys, 
+                  (int)light, _this->algo.get_last_light_decision(), (int)fan, _this->algo.get_last_fan_decision())
         }
         else
         {
@@ -1275,8 +1291,17 @@ bool ShowerGuardHandler::read_temp(float & temp)
                 }
 
                 TRACE("this is configured device, r_temp=%f", r_temp)
-                temp = r_temp;
-                r = true;
+
+                if ((int) r_temp == -127)
+                {
+                    ERROR("reading failed with N/A value")
+                    r = false;
+                }
+                else 
+                {
+                    temp = r_temp;
+                    r = true;
+                }
             }
         }
 
