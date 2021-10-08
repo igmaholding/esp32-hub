@@ -589,8 +589,8 @@ class ShowerGuardAlgo
         bool get_light() const { return light; }
         bool get_fan() const { return fan; }
 
-        const char * get_last_light_decision() const; 
-        const char * get_last_fan_decision() const; 
+        String get_last_light_decision() const; 
+        String get_last_fan_decision() const; 
 
   protected:
 
@@ -617,8 +617,8 @@ class ShowerGuardAlgo
         ShowerGuardConfig::Light::Mode light_mode;
         ShowerGuardConfig::Light::Mode fan_mode;
 
-        const char * last_light_decision[2]; // 2 levels
-        const char * last_fan_decision[3]; // 3 levels
+        String last_light_decision[2]; // 2 levels
+        String last_fan_decision[3]; // 3 levels
 };
 
 
@@ -734,19 +734,23 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     }
 
     light = motion_light;
-    last_light_decision[0] = "motion";
+    last_light_decision[0] = String("motion");
 
     bool last_rh_toggle = rh_toggle;
+
+    char buf[128];
 
     if (rh >= rh_on)
     {
         rh_toggle = true;
-        last_fan_decision[0] = "rh-high";
+        sprintf(buf, "rh-high %.1f/%.1f", rh, (float) rh_on);
+        last_fan_decision[0] = String(buf);
     }
     else if (rh <= rh_off)
     {
         rh_toggle = false;
-        last_fan_decision[0] = "rh-low";
+        sprintf(buf, "rh-low %.1f/%.1f", rh, (float) rh_off);
+        last_fan_decision[0] = String(buf);
     }
     else
     {
@@ -756,7 +760,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
             {
                 TRACE("Soft rh_toggle condition")
                 rh_toggle = false;
-               last_fan_decision[0] = "rh-soft-down";
+               last_fan_decision[0] = String("rh-soft-down");
             }
 
         }
@@ -770,37 +774,37 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     if (motion_fan)
     {
         fan = true;
-        last_fan_decision[1] = "motion";
+        last_fan_decision[1] = String("motion");
     }
     else
     {
-        last_fan_decision[1] = "";
+        last_fan_decision[1].clear();
         fan = rh_toggle;
     }
 
     if (light_mode != ShowerGuardConfig::Light::mAuto)
     {
         light = light_mode == ShowerGuardConfig::Light::mOn ? true : false;
-        last_light_decision[1] = "nonauto-mode";
+        last_light_decision[1] = String("nonauto-mode");
     }
     else
     {
-        last_light_decision[1] = "";
+        last_light_decision[1].clear();
     }
 
     if (fan_mode != ShowerGuardConfig::Light::mAuto)
     {
         fan = fan_mode == ShowerGuardConfig::Fan::mOn ? true : false;
-        last_fan_decision[2] = "nonauto-mode";
+        last_fan_decision[2] = String("nonauto-mode");
     }
     else
     {
-        last_fan_decision[2] = "";
+        last_fan_decision[2].clear();
     }
 }
 
 
-const char * ShowerGuardAlgo::get_last_light_decision() const 
+String ShowerGuardAlgo::get_last_light_decision() const 
 {
     for (size_t i = sizeof(last_light_decision)/sizeof(last_light_decision[0])-1; i>=0; --i)
     {
@@ -810,10 +814,10 @@ const char * ShowerGuardAlgo::get_last_light_decision() const
         }
     }
 
-    return "";
+    return String();
 }
 
-const char * ShowerGuardAlgo::get_last_fan_decision() const 
+String ShowerGuardAlgo::get_last_fan_decision() const 
 {
     for (size_t i = sizeof(last_fan_decision)/sizeof(last_fan_decision[0])-1; i>=0; --i)
     {
@@ -823,7 +827,7 @@ const char * ShowerGuardAlgo::get_last_fan_decision() const
         }
     }
 
-    return "";
+    return String();
 }
 
 
@@ -844,12 +848,12 @@ void ShowerGuardAlgo::init()
 
     for (size_t i = 0; i<sizeof(last_light_decision)/sizeof(last_light_decision[0]); ++i)
     {
-        last_light_decision[i] = "";
+        last_light_decision[i].clear();
     }
 
     for (size_t i = 0; i<sizeof(last_fan_decision)/sizeof(last_fan_decision[0]); ++i)
     {
-        last_fan_decision[i] = "";
+        last_fan_decision[i].clear();
     }
 }
 
@@ -1142,8 +1146,8 @@ void ShowerGuardHandler::task(void * parameter)
         if (logging_slot_count == 0)
         {
             logging_slot_count = LOGGING_SLOT;
-            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d (%s), \"fan\":%d (%s)}", temp, rh, (int)motion_hys, 
-                  (int)light, _this->status.light_decision, (int)fan, _this->status.fan_decision)
+            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}", 
+                  temp, rh, (int)motion_hys, (int)light, (int)fan, _this->status.light_decision.c_str(), _this->status.fan_decision.c_str())
         }
         else
         {
