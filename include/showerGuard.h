@@ -413,6 +413,8 @@ struct ShowerGuardStatus
         motion = false;
         light = false;
         fan = false;
+        light_decision = "";
+        fan_decision = "";
     }
 
     ShowerGuardStatus(const ShowerGuardStatus & other)
