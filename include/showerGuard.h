@@ -415,6 +415,40 @@ struct ShowerGuardStatus
         fan = false;
     }
 
+    ShowerGuardStatus(const ShowerGuardStatus & other)
+    {
+        if (this == & other)
+        {
+            return;
+        }        
+
+        temp = other.temp;
+        rh = other.rh;
+        motion = other.motion;
+        light = other.light;
+        fan = other.fan;
+        light_decision = other.light_decision;
+        fan_decision = other.fan_decision;
+    }
+
+    ShowerGuardStatus & operator = (const ShowerGuardStatus & other)
+    {
+        if (this == & other)
+        {
+            return *this;
+        }        
+
+        temp = other.temp;
+        rh = other.rh;
+        motion = other.motion;
+        light = other.light;
+        fan = other.fan;
+        light_decision = other.light_decision;
+        fan_decision = other.fan_decision;
+
+        return *this;
+    }
+
     float temp;
     float rh;
     bool motion;

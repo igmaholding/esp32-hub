@@ -645,7 +645,16 @@ class ShowerGuardHandler
         void stop();
         void reconfigure(const ShowerGuardConfig & config);
 
-        ShowerGuardStatus get_status() const { return status; }
+        ShowerGuardStatus get_status()  
+        { 
+            ShowerGuardStatus _status;
+
+            { Lock lock(semaphore);
+            _status = status;
+            }
+            
+            return _status; 
+        }
 
         static unsigned analog_read(uint8_t gpio);
 
@@ -1019,6 +1028,7 @@ void ShowerGuardHandler::task(void * parameter)
     while(_this->_is_active)
     {
         bool do_algo_loop = false;
+        ShowerGuardStatus status_copy;
 
         { Lock lock(_this->semaphore);
 
@@ -1142,26 +1152,29 @@ void ShowerGuardHandler::task(void * parameter)
                     logging_slot_count = 0;
                 }
             }
-        }
+        
+            status_copy.temp = temp;
+            status_copy.rh = rh;
+            status_copy.motion = motion_hys;
+            status_copy.light = light;
+            status_copy.fan = fan;
+            status_copy.light_decision = _this->algo.get_last_light_decision();
+            status_copy.fan_decision = _this->algo.get_last_fan_decision();
 
-        _this->status.temp = temp;
-        _this->status.rh = rh;
-        _this->status.motion = motion_hys;
-        _this->status.light = light;
-        _this->status.fan = fan;
-        _this->status.light_decision = _this->algo.get_last_light_decision();
-        _this->status.fan_decision = _this->algo.get_last_fan_decision();
+            _this->status = status_copy;
+        }
 
         if (logging_slot_count == 0)
         {
             logging_slot_count = LOGGING_SLOT;
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}", 
-                  temp, rh, (int)motion_hys, (int)light, (int)fan, _this->status.light_decision.c_str(), _this->status.fan_decision.c_str())
+                temp, rh, (int)motion_hys, (int)light, (int)fan, status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
         }
         else
         {
             logging_slot_count--;
         }
+        
 
         delay(1000);
     }
