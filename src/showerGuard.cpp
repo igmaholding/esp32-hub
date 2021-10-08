@@ -740,7 +740,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
             rh_toggle = true;
         }
 
-        sprintf(buf, "init %.1f/%.1f (middle) at %s", rh, (float) rh_on, time_t_2_str(now_time).c_str());
+        sprintf(buf, "init %.1f/%.1f (middle) at %s", rh, (float) rh_middle, time_t_2_str(now_time).c_str());
         last_fan_decision[0] = buf;
     }
 
