@@ -816,7 +816,7 @@ String ShowerGuardAlgo::get_last_light_decision() const
 {
     for (size_t i = sizeof(last_light_decision)/sizeof(last_light_decision[0])-1; i>=0; --i)
     {
-        if (last_light_decision[i][0])
+        if (!last_light_decision[i].isEmpty())
         {
             return last_light_decision[i];
         }
@@ -829,7 +829,7 @@ String ShowerGuardAlgo::get_last_fan_decision() const
 {
     for (size_t i = sizeof(last_fan_decision)/sizeof(last_fan_decision[0])-1; i>=0; --i)
     {
-        if (last_fan_decision[i][0])
+        if (!last_fan_decision[i].isEmpty())
         {
             return last_fan_decision[i];
         }
