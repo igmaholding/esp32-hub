@@ -747,7 +747,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
         }
     }
 
-    char buf[128];
+    char buf[96];
 
     light = motion_light;
     sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), light_linger);
@@ -962,7 +962,7 @@ void ShowerGuardHandler::start(const ShowerGuardConfig & _config)
     xTaskCreate(
         task,                  // Function that should be called
         "shower_guard_task",   // Name of the task (for debugging)
-        2048,                  // Stack size (bytes)
+        4096,                  // Stack size (bytes)
         this,                  // Parameter to pass
         1,                     // Task priority
         NULL                   // Task handle

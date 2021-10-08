@@ -10,7 +10,7 @@
 
 String tm_2_str(const tm & _tm)
 {
-  char buf[128];
+  char buf[32];
   sprintf(buf, "%d-%02d-%02d %02d:%02d:%02d", _tm.tm_year+1900, _tm.tm_mon+1, _tm.tm_mday, _tm.tm_hour, _tm.tm_min, _tm.tm_sec);
   return String(buf);
 }
