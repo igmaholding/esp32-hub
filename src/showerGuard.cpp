@@ -859,7 +859,7 @@ String ShowerGuardAlgo::get_last_light_decision() const
         }
     }
 
-    return String();
+    return String("");
 }
 
 String ShowerGuardAlgo::get_last_fan_decision() const 
@@ -872,7 +872,7 @@ String ShowerGuardAlgo::get_last_fan_decision() const
         }
     }
 
-    return String();
+    return String("");
 }
 
 
