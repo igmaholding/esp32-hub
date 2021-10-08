@@ -1136,12 +1136,14 @@ void ShowerGuardHandler::task(void * parameter)
         _this->status.motion = motion_hys;
         _this->status.light = light;
         _this->status.fan = fan;
+        _this->status.light_decision = _this->algo.get_last_light_decision();
+        _this->status.fan_decision = _this->algo.get_last_fan_decision();
 
         if (logging_slot_count == 0)
         {
             logging_slot_count = LOGGING_SLOT;
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d (%s), \"fan\":%d (%s)}", temp, rh, (int)motion_hys, 
-                  (int)light, _this->algo.get_last_light_decision(), (int)fan, _this->algo.get_last_fan_decision())
+                  (int)light, _this->status.light_decision, (int)fan, _this->status.fan_decision)
         }
         else
         {

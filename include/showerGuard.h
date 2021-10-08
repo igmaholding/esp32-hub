@@ -413,6 +413,8 @@ struct ShowerGuardStatus
         motion = false;
         light = false;
         fan = false;
+        light_decision = "";
+        fan_decision = "";
     }
 
     float temp;
@@ -420,6 +422,8 @@ struct ShowerGuardStatus
     bool motion;
     bool light;
     bool fan;
+    const char * light_decision;
+    const char * fan_decision;
 };
 
 void start_shower_guard_task(const ShowerGuardConfig &);

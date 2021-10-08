@@ -261,6 +261,8 @@ void getAutonom(JsonVariant & json)
         jsonVariant["motion"] = status.motion;
         jsonVariant["light"] = status.light;
         jsonVariant["fan"] = status.fan;
+        jsonVariant["light_decision"] = status.light_decision;
+        jsonVariant["fan_decision"] = status.fan_decision;
   }
 }
 
