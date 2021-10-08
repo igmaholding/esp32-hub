@@ -116,7 +116,7 @@ void setup()
       })
       .onEnd([]() {
         Serial.println("\nEnd");
-        ESP.restart(); // should be done automatically?
+        //ESP.restart(); // should be done automatically?
       })
       .onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
