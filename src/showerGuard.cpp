@@ -717,6 +717,8 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 {
     // run algo even if there are overrides to fan and light (mode not auto)
 
+    char buf[96];
+
     uint32_t now_millis = millis();
 
     time_t now_time; 
@@ -726,6 +728,21 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 
     bool motion_light = false;
     bool motion_fan = false;
+
+    if (last_motion_millis == 0) // running first time after init
+    {
+        motion = true;  // imitate initial motion to put on everything
+
+        unsigned rh_middle = rh_off + (rh_on - rh_off)/2;
+
+        if (rh >= rh_middle)
+        {
+            rh_toggle = true;
+        }
+
+        sprintf(buf, "init %.1f/%.1f (middle) at %s", rh, (float) rh_on, time_t_2_str(now_time).c_str());
+        last_fan_decision[0] = String(buf);
+    }
 
     if (motion)
     {
@@ -747,25 +764,37 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
         }
     }
 
-    char buf[96];
+    if (light == false && motion_light == true)
+    {
+        sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), light_linger);
+        last_light_decision[0] = String(buf);
+    }
+    else if (light == true && motion_light == false)
+    {
+        last_light_decision[0].clear();
+    }
 
     light = motion_light;
-    sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), light_linger);
-    last_light_decision[0] = String(buf);
 
     bool last_rh_toggle = rh_toggle;
 
     if (rh >= rh_on)
     {
-        rh_toggle = true;
-        sprintf(buf, "rh-high %.1f/%.1f at %s", rh, (float) rh_on, time_t_2_str(now_time).c_str());
-        last_fan_decision[0] = String(buf);
+        if (rh_toggle == false)
+        {
+            rh_toggle = true;
+            sprintf(buf, "rh-high %.1f/%.1f at %s", rh, (float) rh_on, time_t_2_str(now_time).c_str());
+            last_fan_decision[0] = String(buf);
+        }
     }
     else if (rh <= rh_off)
     {
-        rh_toggle = false;
-        sprintf(buf, "rh-low %.1f/%.1f at %s", rh, (float) rh_off, time_t_2_str(now_time).c_str());
-        last_fan_decision[0] = String(buf);
+        if (rh_toggle == true)
+        {
+            rh_toggle = false;
+            sprintf(buf, "rh-low %.1f/%.1f at %s", rh, (float) rh_off, time_t_2_str(now_time).c_str());
+            last_fan_decision[0] = String(buf);
+        }
     }
     else
     {
@@ -778,7 +807,6 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
                 sprintf(buf, "rh-soft-down at %s", time_t_2_str(now_time).c_str());
                last_fan_decision[0] = String(buf);
             }
-
         }
     }
 
@@ -864,15 +892,18 @@ void ShowerGuardAlgo::init()
     light_mode = ShowerGuardConfig::Light::mAuto;
     fan_mode = ShowerGuardConfig::Light::mAuto;
 
-    for (size_t i = 0; i<sizeof(last_light_decision)/sizeof(last_light_decision[0]); ++i)
+    for (size_t i = 1; i<sizeof(last_light_decision)/sizeof(last_light_decision[0]); ++i)
     {
         last_light_decision[i].clear();
     }
 
-    for (size_t i = 0; i<sizeof(last_fan_decision)/sizeof(last_fan_decision[0]); ++i)
+    for (size_t i = 1; i<sizeof(last_fan_decision)/sizeof(last_fan_decision[0]); ++i)
     {
         last_fan_decision[i].clear();
     }
+
+    last_light_decision[0] = String("init");
+    last_fan_decision[0] = String("init");
 }
 
 
