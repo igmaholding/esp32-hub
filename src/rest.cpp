@@ -29,6 +29,8 @@ void getSystem(JsonVariant & json)
     char buf[64];
     sprintf(buf, "%02dd %02dh %02dm %02ds", days, hours, minutes, seconds);
     json["uptime"] = String(buf);
+
+    TRACE("System uptime %s", buf)
 }
 
 
