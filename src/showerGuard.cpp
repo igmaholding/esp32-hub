@@ -1203,7 +1203,7 @@ void ShowerGuardHandler::task(void * parameter)
         {
             logging_slot_count = LOGGING_SLOT;
 
-            TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
+            //TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
 
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}", 
                 temp, rh, (int)motion_hys, (int)light, (int)fan, status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())

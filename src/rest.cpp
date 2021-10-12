@@ -51,6 +51,7 @@ String restPing(bool include_info)
     jsonDocument["wifiinfo"] = wifiHandler.getWifiInfo();
   }
 
+  jsonDocument.createNestedObject("system");
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
@@ -194,6 +195,7 @@ String restGet(const String & resetStamp)
   jsonDocument.createNestedObject("autonom");
   JsonVariant autonom = jsonDocument["autonom"];
   getAutonom(autonom);
+  jsonDocument.createNestedObject("system");
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
@@ -210,8 +212,6 @@ String restGetPm(const String & resetStamp)
 
   JsonVariant pm = jsonDocument.as<JsonVariant>();
   getPm(pm, resetStamp);
-  JsonVariant system = jsonDocument["system"];
-  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -226,8 +226,6 @@ String restGetAutonom()
 
   JsonVariant autonom = jsonDocument.as<JsonVariant>();
   getAutonom(autonom);
-  JsonVariant system = jsonDocument["system"];
-  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -243,6 +241,7 @@ String restPopLog()
   jsonDocument.createNestedObject("log");
   JsonVariant log = jsonDocument["log"];
   popLog(log);
+  jsonDocument.createNestedObject("system");
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
