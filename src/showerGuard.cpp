@@ -604,6 +604,7 @@ class ShowerGuardAlgo
         bool light;
         bool fan;
 
+        bool reset_rh_decision;
         uint32_t last_motion_millis;
         time_t last_motion_time;
 
@@ -717,7 +718,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 {
     // run algo even if there are overrides to fan and light (mode not auto)
 
-    char buf[96];
+    char buf[128];
 
     uint32_t now_millis = millis();
 
@@ -729,7 +730,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
     bool motion_light = false;
     bool motion_fan = false;
 
-    if (last_motion_millis == 0) // running first time after init
+    if (reset_rh_decision) // running first time after init
     {
         motion = true;  // imitate initial motion to put on everything
 
@@ -742,6 +743,8 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 
         sprintf(buf, "init %.1f/%.1f (middle) at %s", rh, (float) rh_middle, time_t_2_str(now_time).c_str());
         last_fan_decision[0] = buf;
+
+        reset_rh_decision = false;
     }
 
     if (motion)
@@ -851,7 +854,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 
 String ShowerGuardAlgo::get_last_light_decision() const 
 {
-    for (size_t i = sizeof(last_light_decision)/sizeof(last_light_decision[0])-1; i>=0; --i)
+    for (int i = sizeof(last_light_decision)/sizeof(last_light_decision[0])-1; i>=0; --i)
     {
         if (!last_light_decision[i].isEmpty())
         {
@@ -864,7 +867,7 @@ String ShowerGuardAlgo::get_last_light_decision() const
 
 String ShowerGuardAlgo::get_last_fan_decision() const 
 {
-    for (size_t i = sizeof(last_fan_decision)/sizeof(last_fan_decision[0])-1; i>=0; --i)
+    for (int i = sizeof(last_fan_decision)/sizeof(last_fan_decision[0])-1; i>=0; --i)
     {
         if (!last_fan_decision[i].isEmpty())
         {
@@ -880,6 +883,7 @@ void ShowerGuardAlgo::init()
 {
     light = false;
     fan = false;
+    reset_rh_decision = true;
     last_motion_millis = 0;
     time(& last_motion_time);
     rh_toggle = false;
@@ -1055,11 +1059,11 @@ void ShowerGuardHandler::task(void * parameter)
     bool motion_hys = false;
     bool motion = false;
     unsigned motion_hys_count = 0;
+    ShowerGuardStatus status_copy;
 
     while(_this->_is_active)
     {
         bool do_algo_loop = false;
-        ShowerGuardStatus status_copy;
 
         { Lock lock(_this->semaphore);
 
@@ -1199,7 +1203,7 @@ void ShowerGuardHandler::task(void * parameter)
         {
             logging_slot_count = LOGGING_SLOT;
 
-            TRACE("light_decision length %d, is NULL %d", status_copy.light_decision.length(), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
+            TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
 
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}", 
                 temp, rh, (int)motion_hys, (int)light, (int)fan, status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
