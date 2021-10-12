@@ -15,6 +15,23 @@ extern WifiHandler wifiHandler;
 
 static char _buffer[BIG_JSON_BUFFER_SIZE]; // for serialization of bigger things, not thread safe!
 
+
+void getSystem(JsonVariant & json)
+{
+    TRACE("getSystem")
+
+    unsigned long total_seconds = millis() / 1000;
+    int seconds = total_seconds % 60;
+    int minutes = (total_seconds / 60) % 60;
+    int hours = (total_seconds / (60*60)) % 24;
+    int days = total_seconds / (60*60*24);
+
+    char buf[64];
+    sprintf(buf, "%02dd %02dh %02dm %02ds", days, hours, minutes, seconds);
+    json["uptime"] = String(buf);
+}
+
+
 String restPing(bool include_info) 
 {
   TRACE("REST ping")
@@ -24,13 +41,16 @@ String restPing(bool include_info)
   jsonDocument["version"] = REST_VERSION;
 
   jsonDocument.createNestedObject("pm");
-  JsonVariant pmJsonVariant = jsonDocument["pm"];
-  pingPm(pmJsonVariant);
+  JsonVariant pm = jsonDocument["pm"];
+  pingPm(pm);
 
   if (include_info)
   {
     jsonDocument["wifiinfo"] = wifiHandler.getWifiInfo();
   }
+
+  JsonVariant system = jsonDocument["system"];
+  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -167,11 +187,13 @@ String restGet(const String & resetStamp)
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
   jsonDocument.createNestedObject("pm");
-  JsonVariant pmJsonVariant = jsonDocument["pm"];
-  getPm(pmJsonVariant, resetStamp);
+  JsonVariant pm = jsonDocument["pm"];
+  getPm(pm, resetStamp);
   jsonDocument.createNestedObject("autonom");
-  JsonVariant autonomJsonVariant = jsonDocument["autonom"];
-  getAutonom(autonomJsonVariant);
+  JsonVariant autonom = jsonDocument["autonom"];
+  getAutonom(autonom);
+  JsonVariant system = jsonDocument["system"];
+  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -184,8 +206,10 @@ String restGetPm(const String & resetStamp)
 
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
-  JsonVariant pmJsonVariant = jsonDocument.as<JsonVariant>();
-  getPm(pmJsonVariant, resetStamp);
+  JsonVariant pm = jsonDocument.as<JsonVariant>();
+  getPm(pm, resetStamp);
+  JsonVariant system = jsonDocument["system"];
+  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -198,8 +222,10 @@ String restGetAutonom()
 
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
-  JsonVariant autonomJsonVariant = jsonDocument.as<JsonVariant>();
-  getAutonom(autonomJsonVariant);
+  JsonVariant autonom = jsonDocument.as<JsonVariant>();
+  getAutonom(autonom);
+  JsonVariant system = jsonDocument["system"];
+  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
@@ -213,8 +239,10 @@ String restPopLog()
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
   jsonDocument.createNestedObject("log");
-  JsonVariant jsonVariant = jsonDocument["log"];
-  popLog(jsonVariant);
+  JsonVariant log = jsonDocument["log"];
+  popLog(log);
+  JsonVariant system = jsonDocument["system"];
+  getSystem(system);
 
   serializeJson(jsonDocument, _buffer); 
   return String(_buffer);
