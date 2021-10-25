@@ -8,6 +8,7 @@
 
 #include <autonom.h>
 #include <wifiHandler.h>
+#include <wifiNetworks.h>
 #include <gpio.h>
 #include <pm.h>
 #include <www.h>
@@ -23,25 +24,6 @@ const long gmtOffset_sec = 0;
 const int daylightOffset_sec = 3600 + 3600;
 
 const size_t EEPROM_SIZE = 512;
-
-void initKnownNetworks()
-{
-    knownNetworks.push_back(std::make_pair(String("IGMALodge12"), String("IGMALodge14")));
-    knownNetworks.push_back(std::make_pair(String("IGMALodge3"), String("IGMALodge14")));
-    knownNetworks.push_back(std::make_pair(String("IGMALodge4"), String("IGMALodge14")));
-
-    knownNetworks.push_back(std::make_pair(String("NETGEAR67"), String("largeumbrella829")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden1"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden2"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden3"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden4"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden5"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden6"), String("IGMASoder1")));
-    knownNetworks.push_back(std::make_pair(String("igmagarpgarden11"), String("IGMASoder1")));
-
-    knownNetworks.push_back(std::make_pair(String("dlink-15A8"), String("uiacw71798")));
-    knownNetworks.push_back(std::make_pair(String("dlink-15A8-route"), String("uiacw71798")));
-}
 
 void connectWifi()
 {
@@ -92,7 +74,7 @@ void setup()
 
     restoreAutonom();
 
-    initKnownNetworks();
+    initKnownNetworks(knownNetworks);
     connectWifi();
     TRACE("Fetching date and time from NTP ...")
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
