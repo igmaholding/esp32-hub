@@ -1,7 +1,5 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <eeprom.h>
-#include <map>
 #include <string>
 #include <sstream>
 

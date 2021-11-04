@@ -15,6 +15,9 @@
 #include <onboardLed.h>
 #include <trace.h>
 
+// note: something strange in handling header files that are included in the Esp32Utils library; the eeprom.h included in 
+// epromimage.cpp would not be found unless it is included and used (?) here, in the main project
+
 WifiHandler wifiHandler;
 
 std::vector<std::pair<String, String>> knownNetworks;

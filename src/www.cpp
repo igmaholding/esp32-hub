@@ -164,247 +164,247 @@ RESPONSE:
 
 */
 
-
-
-void on_restart() 
+void on_restart()
 {
-  TRACE("*** RESTART REQUESTED VIA REST ***")
+    TRACE("*** RESTART REQUESTED VIA REST ***")
 
-  webServer.send(200, "application/json", "{}");
-  delay(5000);
-  ESP.restart();
-}
-
-
-void on_ping() 
-{
-  bool include_info = false;
-
-  if (webServer.hasArg("info") == true) 
-  {
-    include_info = true;
-  }
-
-  String r = restPing(include_info);  
-  webServer.send(200, "application/json", r.c_str());
-}
-
-
-void on_wifiinfo() 
-{
-  String r = restWifiInfo();  
-  webServer.send(200, "application/json", r.c_str());
-}
-
-
-void on_setup() 
-{
-  String body;
-  String resetStamp;
-
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
-
-  if (webServer.hasArg("plain") == false) 
-  {
-    ERROR("Setup POST request without a payload")
-  }
-  else
-  {
-    body = webServer.arg("plain");
-  }
-  
-  String r = restSetup(body, resetStamp);  
-  
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = true;
-}
-
-
-void on_setup_pm() 
-{
-  String body;
-  String resetStamp;
-
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
-
-  if (webServer.hasArg("plain") == false) 
-  {
-    ERROR("Setup PM POST request without a payload")
-  }
-  else
-  {
-    body = webServer.arg("plain");
-  }
-  
-  String r = restSetupPm(body, resetStamp);  
-  
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = true;
-}
-
-
-void on_setup_autonom() 
-{
-  String body;
-
-  if (webServer.hasArg("plain") == false) 
-  {
-    ERROR("Setup AUTONOM POST request without a payload")
-  }
-  else
-  {
-    body = webServer.arg("plain");
-  }
-  
-  String r = restSetupAutonom(body);  
-  
-  if (r.length() == 0)
-  {
     webServer.send(200, "application/json", "{}");
-    led_configured = true;
-  }
-  else
-  {
-    webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
-  }
+    led_blink_once = true;
+
+    delay(5000);
+    ESP.restart();
 }
 
-
-void on_cleanup() 
+void on_ping()
 {
-  String r = restCleanup();  
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = false;
+    bool include_info = false;
+
+    if (webServer.hasArg("info") == true)
+    {
+        include_info = true;
+    }
+
+    String r = restPing(include_info);
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_cleanup_pm() 
+void on_wifiinfo()
 {
-  String r = restCleanupPm();  
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = false;
+    String r = restWifiInfo();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_cleanup_autonom() 
+void on_setup()
 {
-  String r = restCleanupAutonom();  
-  webServer.send(200, "application/json", r.c_str());
-  led_configured = false;
+    String body;
+    String resetStamp;
+
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
+
+    if (webServer.hasArg("plain") == false)
+    {
+        ERROR("Setup POST request without a payload")
+    }
+    else
+    {
+        body = webServer.arg("plain");
+    }
+
+    String r = restSetup(body, resetStamp);
+
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_reset() 
+void on_setup_pm()
 {
-  String resetStamp;
+    String body;
+    String resetStamp;
 
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
-  
-  String r = restReset(resetStamp);   
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
+
+    if (webServer.hasArg("plain") == false)
+    {
+        ERROR("Setup PM POST request without a payload")
+    }
+    else
+    {
+        body = webServer.arg("plain");
+    }
+
+    String r = restSetupPm(body, resetStamp);
+
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_reset_pm() 
+void on_setup_autonom()
 {
-  String resetStamp;
+    String body;
 
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
+    if (webServer.hasArg("plain") == false)
+    {
+        ERROR("Setup AUTONOM POST request without a payload")
+    }
+    else
+    {
+        body = webServer.arg("plain");
+    }
 
-  String r = restResetPm(resetStamp);  
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    String r = restSetupAutonom(body);
+
+    if (r.length() == 0)
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_get() 
+void on_cleanup()
 {
-  String resetStamp;
-
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
-
-  String r = restGet(resetStamp);  
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    String r = restCleanup();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_get_pm() 
+void on_cleanup_pm()
 {
-  String resetStamp;
-  DEBUG("on_get_pm")
-
-  if (webServer.hasArg("reset_stamp") == true) 
-  {
-    resetStamp = webServer.arg("reset_stamp");
-  }
-
-  String r = restGetPm(resetStamp);  
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    String r = restCleanupPm();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_get_autonom() 
+void on_cleanup_autonom()
 {
-  DEBUG("on_get_autonom")
-  String r = restGetAutonom();  
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    String r = restCleanupAutonom();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void on_pop_log() 
+void on_reset()
 {
-  String r = restPopLog();  
-  webServer.send(200, "application/json", r.c_str());
-  led_blink_once = true;
+    String resetStamp;
+
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
+
+    String r = restReset(resetStamp);
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
-
-void wwwSetupRouting() 
+void on_reset_pm()
 {
-  webServer.on("/restart", HTTP_POST, on_restart);
-  webServer.on("/ping", HTTP_GET, on_ping);
-  webServer.on("/wifiinfo", HTTP_GET, on_wifiinfo);
-  webServer.on("/setup", HTTP_POST, on_setup);
-  webServer.on("/setup/pm", HTTP_POST, on_setup_pm);
-  webServer.on("/setup/autonom", HTTP_POST, on_setup_autonom);
-  webServer.on("/cleanup", HTTP_POST, on_cleanup);
-  webServer.on("/cleanup/pm", HTTP_POST, on_cleanup_pm);
-  webServer.on("/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
-  webServer.on("/reset", HTTP_POST, on_reset);
-  webServer.on("/reset/pm", HTTP_POST, on_reset_pm);
-  webServer.on("/get", HTTP_GET, on_get);
-  webServer.on("/get/pm", HTTP_GET, on_get_pm);
-  webServer.on("/get/autonom", HTTP_GET, on_get_autonom);
-  webServer.on("/poplog", HTTP_GET, on_pop_log);
- }
+    String resetStamp;
 
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
 
-void wwwBegin() 
-{
-  webServer.begin();
+    String r = restResetPm(resetStamp);
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
 }
 
+void on_get()
+{
+    String resetStamp;
 
-void wwwHandleClient() 
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
+
+    String r = restGet(resetStamp);
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
+}
+
+void on_get_pm()
+{
+    String resetStamp;
+    DEBUG("on_get_pm")
+
+    if (webServer.hasArg("reset_stamp") == true)
+    {
+        resetStamp = webServer.arg("reset_stamp");
+    }
+
+    String r = restGetPm(resetStamp);
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
+}
+
+void on_get_autonom()
+{
+    DEBUG("on_get_autonom")
+    String r = restGetAutonom();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
+}
+
+void on_pop_log()
+{
+    String r = restPopLog();
+    webServer.send(200, "application/json", r.c_str());
+    led_blink_once = true;
+    led_paired = true;
+}
+
+void wwwSetupRouting()
+{
+    webServer.on("/restart", HTTP_POST, on_restart);
+    webServer.on("/ping", HTTP_GET, on_ping);
+    webServer.on("/wifiinfo", HTTP_GET, on_wifiinfo);
+    webServer.on("/setup", HTTP_POST, on_setup);
+    webServer.on("/setup/pm", HTTP_POST, on_setup_pm);
+    webServer.on("/setup/autonom", HTTP_POST, on_setup_autonom);
+    webServer.on("/cleanup", HTTP_POST, on_cleanup);
+    webServer.on("/cleanup/pm", HTTP_POST, on_cleanup_pm);
+    webServer.on("/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
+    webServer.on("/reset", HTTP_POST, on_reset);
+    webServer.on("/reset/pm", HTTP_POST, on_reset_pm);
+    webServer.on("/get", HTTP_GET, on_get);
+    webServer.on("/get/pm", HTTP_GET, on_get_pm);
+    webServer.on("/get/autonom", HTTP_GET, on_get_autonom);
+    webServer.on("/poplog", HTTP_GET, on_pop_log);
+}
+
+void wwwBegin()
+{
+    webServer.begin();
+}
+
+void wwwHandleClient()
 {
     webServer.handleClient();
 }
