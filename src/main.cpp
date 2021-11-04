@@ -22,9 +22,9 @@ WifiHandler wifiHandler;
 
 std::vector<std::pair<String, String>> knownNetworks;
 
-const char *ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 0;
-const int daylightOffset_sec = 3600 + 3600;
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 3600;
+const int   daylightOffset_sec = 3600+3600;
 
 const size_t EEPROM_SIZE = 512;
 
