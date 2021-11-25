@@ -5,6 +5,7 @@
 
 #include <rest.h>
 #include <trace.h>
+#include <www.h>
 
 WebServer webServer(80);
 
@@ -382,21 +383,21 @@ void on_pop_log()
 
 void wwwSetupRouting()
 {
-    webServer.on("/restart", HTTP_POST, on_restart);
-    webServer.on("/ping", HTTP_GET, on_ping);
-    webServer.on("/wifiinfo", HTTP_GET, on_wifiinfo);
-    webServer.on("/setup", HTTP_POST, on_setup);
-    webServer.on("/setup/pm", HTTP_POST, on_setup_pm);
-    webServer.on("/setup/autonom", HTTP_POST, on_setup_autonom);
-    webServer.on("/cleanup", HTTP_POST, on_cleanup);
-    webServer.on("/cleanup/pm", HTTP_POST, on_cleanup_pm);
-    webServer.on("/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
-    webServer.on("/reset", HTTP_POST, on_reset);
-    webServer.on("/reset/pm", HTTP_POST, on_reset_pm);
-    webServer.on("/get", HTTP_GET, on_get);
-    webServer.on("/get/pm", HTTP_GET, on_get_pm);
-    webServer.on("/get/autonom", HTTP_GET, on_get_autonom);
-    webServer.on("/poplog", HTTP_GET, on_pop_log);
+    webServer.on("/" HARVESTER_API_KEY "/restart", HTTP_POST, on_restart);
+    webServer.on("/" HARVESTER_API_KEY "/ping", HTTP_GET, on_ping);
+    webServer.on("/" HARVESTER_API_KEY "/wifiinfo", HTTP_GET, on_wifiinfo);
+    webServer.on("/" HARVESTER_API_KEY "/setup", HTTP_POST, on_setup);
+    webServer.on("/" HARVESTER_API_KEY "/setup/pm", HTTP_POST, on_setup_pm);
+    webServer.on("/" HARVESTER_API_KEY "/setup/autonom", HTTP_POST, on_setup_autonom);
+    webServer.on("/" HARVESTER_API_KEY "/cleanup", HTTP_POST, on_cleanup);
+    webServer.on("/" HARVESTER_API_KEY "/cleanup/pm", HTTP_POST, on_cleanup_pm);
+    webServer.on("/" HARVESTER_API_KEY "/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
+    webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
+    webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
+    webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);
+    webServer.on("/" HARVESTER_API_KEY "/get/pm", HTTP_GET, on_get_pm);
+    webServer.on("/" HARVESTER_API_KEY "/get/autonom", HTTP_GET, on_get_autonom);
+    webServer.on("/" HARVESTER_API_KEY "/poplog", HTTP_GET, on_pop_log);
 }
 
 void wwwBegin()
