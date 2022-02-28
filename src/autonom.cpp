@@ -5,6 +5,7 @@
 
 #include <autonom.h>
 #include <showerGuard.h>
+#include <keyBox.h>
 #include <trace.h>
 #include <epromImage.h>
 
@@ -16,6 +17,7 @@ class AutonomTaskManager
         AutonomTaskManager()
         {
             showerGuardActive = false;
+            keyBoxActive = false;
         }
 
         void startShowerGuard(const ShowerGuardConfig &);
@@ -26,12 +28,21 @@ class AutonomTaskManager
 
         bool isShowerGuardActive() const { return showerGuardActive; }
 
+        void startKeyBox(const KeyBoxConfig &);
+        void stopKeyBox();
+        void reconfigureKeyBox(const KeyBoxConfig &);
+
+        KeyBoxStatus getKeyBoxStatus() const;
+
+        bool isKeyBoxActive() const { return keyBoxActive; }
+
         void stopAll();
 
 
     protected:
 
         bool showerGuardActive;
+        bool keyBoxActive;
 
 };
 

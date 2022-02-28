@@ -9,6 +9,7 @@ void restoreAutonom(); // from EPROM
 enum FunctionType
 {
     ftShowerGuard = 1,
+    ftKeyBox =      2,
 };
 
 const char * function_type_2_str(FunctionType);
