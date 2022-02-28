@@ -1,10 +1,8 @@
 #include <ArduinoJson.h>
-#include <showerGuard.h>
+#include <keyBox.h>
 #include <gpio.h>
 #include <trace.h>
 #include <binarySemaphore.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
 extern GpioHandler gpioHandler;
 
@@ -23,9 +21,9 @@ void _err_val(const char *name, int value)
     ERROR("%s %d incorrect", name, value)
 }
 
-bool ShowerGuardConfig::is_valid() const
+bool KeyBoxConfig::is_valid() const
 {
-    bool r = motion.is_valid() && rh.is_valid() && temp.is_valid() && light.is_valid() && fan.is_valid();
+    bool r = buzzer.is_valid() && keypad.is_valid() && actuator.is_valid() && codes.is_valid();
 
     if (r == false)
     {
@@ -34,149 +32,139 @@ bool ShowerGuardConfig::is_valid() const
 
     GpioCheckpad checkpad;
 
-    const char *object_name = "motion.channel.gpio";
+    String object_name = "buzzer.channel.gpio";
 
-    if (checkpad.get_usage(motion.channel.gpio) != GpioCheckpad::uNone)
+    if (checkpad.get_usage(buzzer.channel.gpio) != GpioCheckpad::uNone)
     {
-        _err_dup(object_name, (int)motion.channel.gpio);
+        _err_dup(object_name.c_str(), (int)buzzer.channel.gpio);
         return false;
     }
 
-    if (!checkpad.set_usage(motion.channel.gpio, GpioCheckpad::uDigitalInput))
+    if (!checkpad.set_usage(buzzer.channel.gpio, GpioCheckpad::uDigitalOutput))
     {
-        _err_cap(object_name, (int)motion.channel.gpio);
+        _err_cap(object_name.c_str(), (int)buzzer.channel.gpio);
         return false;
     }
 
-    object_name = "rh.vad";
-
-    if (checkpad.get_usage(rh.vad.gpio) != GpioCheckpad::uNone)
+    for (size_t i=0; i<sizeof(keypad.c)/sizeof(keypad.c[0]); ++i)
     {
-        _err_dup(object_name, (int)rh.vad.gpio);
+        object_name = "keypad.c[" + String(i) + "]";
+
+        if (checkpad.get_usage(keypad.c[i].gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name.c_str(), (int)keypad.c[i].gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(keypad.c[i].gpio, GpioCheckpad::uDigitalOutput))
+        {
+            _err_cap(object_name.c_str(), (int)keypad.c[i].gpio);
+            return false;
+        }
+    }
+
+    for (size_t i=0; i<sizeof(keypad.l)/sizeof(keypad.l[0]); ++i)
+    {
+        object_name = "keypad.l[" + String(i) + "]";
+
+        if (checkpad.get_usage(keypad.l[i].gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name.c_str(), (int)keypad.l[i].gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(keypad.l[i].gpio, GpioCheckpad::uDigitalInput))
+        {
+            _err_cap(object_name.c_str(), (int)keypad.l[i].gpio);
+            return false;
+        }
+    }
+
+    for (size_t i=0; i<sizeof(actuator.addr)/sizeof(actuator.addr[0]); ++i)
+    {
+        object_name = "actuator.addr[" + String(i) + "]";
+
+        if (checkpad.get_usage(actuator.addr[i].gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name.c_str(), (int)actuator.addr[i].gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(actuator.addr[i].gpio, GpioCheckpad::uDigitalOutput))
+        {
+            _err_cap(object_name.c_str(), (int)actuator.addr[i].gpio);
+            return false;
+        }
+    }
+
+    object_name = "actuator.coil";
+
+    if (checkpad.get_usage(actuator.coil.gpio) != GpioCheckpad::uNone)
+    {
+        _err_dup(object_name.c_str(), (int)actuator.coil.gpio);
         return false;
     }
 
-    if (!checkpad.set_usage(rh.vad.gpio, GpioCheckpad::uAnalogInput))
+    if (!checkpad.set_usage(actuator.coil.gpio, GpioCheckpad::uDigitalOutput))
     {
-        _err_cap(object_name, (int)rh.vad.gpio);
+        _err_cap(object_name.c_str(), (int)actuator.coil.gpio);
         return false;
     }
 
-    if (checkpad.check_attenuation(rh.vad.atten) == adc_attenuation_t(-1))
+    object_name = "actuator.status";
+
+    if (checkpad.get_usage(actuator.status.gpio) != GpioCheckpad::uNone)
     {
-        _err_val(object_name, (int)rh.vad.atten);
+        _err_dup(object_name.c_str(), (int)actuator.status.gpio);
         return false;
     }
 
-    object_name = "rh.vdd";
-
-    if (checkpad.get_usage(rh.vdd.gpio) != GpioCheckpad::uNone)
+    if (!checkpad.set_usage(actuator.status.gpio, GpioCheckpad::uDigitalInput))
     {
-        _err_dup(object_name, (int)rh.vdd.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(rh.vdd.gpio, GpioCheckpad::uAnalogInput))
-    {
-        _err_cap(object_name, (int)rh.vdd.gpio);
-        return false;
-    }
-
-    if (checkpad.check_attenuation(rh.vdd.atten) == adc_attenuation_t(-1))
-    {
-        _err_val(object_name, (int)rh.vdd.atten);
-        return false;
-    }
-
-    object_name = "temp.channel.gpio";
-
-    if (checkpad.get_usage(temp.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)temp.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(temp.channel.gpio, GpioCheckpad::uDigitalAll))
-    {
-        _err_cap(object_name, (int)temp.channel.gpio);
-        return false;
-    }
-
-    object_name = "light.channel.gpio";
-
-    if (checkpad.get_usage(light.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)light.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(light.channel.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)light.channel.gpio);
-        return false;
-    }
-
-    object_name = "fan.channel.gpio";
-
-    if (checkpad.get_usage(fan.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)fan.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(fan.channel.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)fan.channel.gpio);
+        _err_cap(object_name.c_str(), (int)actuator.status.gpio);
         return false;
     }
 
     return true;
 }
 
-void ShowerGuardConfig::from_json(const JsonVariant &json)
+void KeyBoxConfig::from_json(const JsonVariant &json)
 {
-    if (json.containsKey("motion"))
+    if (json.containsKey("buzzer"))
     {
-        const JsonVariant &_json = json["motion"];
-        motion.from_json(_json);
+        const JsonVariant &_json = json["buzzer"];
+        buzzer.from_json(_json);
     }
 
-    if (json.containsKey("rh"))
+    if (json.containsKey("keypad"))
     {
-        const JsonVariant &_json = json["rh"];
-        rh.from_json(_json);
+        const JsonVariant &_json = json["keypad"];
+        keypad.from_json(_json);
     }
 
-    if (json.containsKey("temp"))
+    if (json.containsKey("actuator"))
     {
-        const JsonVariant &_json = json["temp"];
-        temp.from_json(_json);
+        const JsonVariant &_json = json["actuator"];
+        actuator.from_json(_json);
     }
 
-    if (json.containsKey("light"))
+    if (json.containsKey("codes"))
     {
-        const JsonVariant &_json = json["light"];
-        light.from_json(_json);
-    }
-
-    if (json.containsKey("fan"))
-    {
-        const JsonVariant &_json = json["fan"];
-        fan.from_json(_json);
+        const JsonVariant &_json = json["codes"];
+        codes.from_json(_json);
     }
 }
 
-void ShowerGuardConfig::to_eprom(std::ostream &os) const
+void KeyBoxConfig::to_eprom(std::ostream &os) const
 {
     os.write((const char *)&EPROM_VERSION, sizeof(EPROM_VERSION));
-    motion.to_eprom(os);
-    rh.to_eprom(os);
-    temp.to_eprom(os);
-    light.to_eprom(os);
-    fan.to_eprom(os);
+    buzzer.to_eprom(os);
+    keypad.to_eprom(os);
+    actuator.to_eprom(os);
+    codes.to_eprom(os);
 }
 
-bool ShowerGuardConfig::from_eprom(std::istream &is)
+bool KeyBoxConfig::from_eprom(std::istream &is)
 {
     uint8_t eprom_version = EPROM_VERSION;
 
@@ -184,21 +172,21 @@ bool ShowerGuardConfig::from_eprom(std::istream &is)
 
     if (eprom_version == EPROM_VERSION)
     {
-        motion.from_eprom(is);
-        rh.from_eprom(is);
-        temp.from_eprom(is);
-        light.from_eprom(is);
-        fan.from_eprom(is);
+        buzzer.from_eprom(is);
+        keypad.from_eprom(is);
+        keypad.from_eprom(is);
+        actuator.from_eprom(is);
+        codes.from_eprom(is);
         return is_valid() && !is.bad();
     }
     else
     {
-        ERROR("Failed to read ShowerGuardConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
+        ERROR("Failed to read KeyBoxConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
         return false;
     }
 }
 
-void ShowerGuardConfig::Motion::from_json(const JsonVariant &json)
+void KeyBoxConfig::Buzzer::from_json(const JsonVariant &json)
 {
     if (json.containsKey("channel"))
     {
@@ -207,18 +195,18 @@ void ShowerGuardConfig::Motion::from_json(const JsonVariant &json)
     }
 }
 
-void ShowerGuardConfig::Motion::to_eprom(std::ostream &os) const
+void KeyBoxConfig::Buzzer::to_eprom(std::ostream &os) const
 {
     channel.to_eprom(os);
 }
 
-bool ShowerGuardConfig::Motion::from_eprom(std::istream &is)
+bool KeyBoxConfig::Buzzer::from_eprom(std::istream &is)
 {
     channel.from_eprom(is);
     return is_valid() && !is.bad();
 }
 
-void ShowerGuardConfig::Motion::Channel::from_json(const JsonVariant &json)
+void KeyBoxConfig::Buzzer::Channel::from_json(const JsonVariant &json)
 {
     if (json.containsKey("gpio"))
     {
@@ -229,24 +217,18 @@ void ShowerGuardConfig::Motion::Channel::from_json(const JsonVariant &json)
     {
         inverted = json["inverted"];
     }
-    if (json.containsKey("debounce"))
-    {
-        debounce = (unsigned)((int)json["debounce"]);
-    }
 }
 
-void ShowerGuardConfig::Motion::Channel::to_eprom(std::ostream &os) const
+void KeyBoxConfig::Buzzer::Channel::to_eprom(std::ostream &os) const
 {
     uint8_t gpio_uint8 = (uint8_t)gpio;
     os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
 
     uint8_t inverted_uint8 = (uint8_t)inverted;
     os.write((const char *)&inverted_uint8, sizeof(inverted_uint8));
-
-    os.write((const char *)&debounce, sizeof(debounce));
 }
 
-bool ShowerGuardConfig::Motion::Channel::from_eprom(std::istream &is)
+bool KeyBoxConfig::Buzzer::Channel::from_eprom(std::istream &is)
 {
     int8_t gpio_int8 = (int8_t)-1;
     is.read((char *)&gpio_int8, sizeof(gpio_int8));
@@ -255,9 +237,6 @@ bool ShowerGuardConfig::Motion::Channel::from_eprom(std::istream &is)
     uint8_t inverted_uint8 = (uint8_t) false;
     is.read((char *)&inverted_uint8, sizeof(inverted_uint8));
     inverted = (bool)inverted_uint8;
-
-    is.read((char *)&debounce, sizeof(debounce));
-    return is_valid() && !is.bad();
 }
 
 void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
