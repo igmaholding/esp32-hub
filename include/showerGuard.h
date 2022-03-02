@@ -451,6 +451,20 @@ struct ShowerGuardStatus
         return *this;
     }
 
+    void to_json(JsonVariant & json)
+    {
+        json.createNestedObject("shower-guard");
+        JsonVariant jsonVariant = json["shower-guard"];
+
+        jsonVariant["temp"] = temp;
+        jsonVariant["rh"] = rh;
+        jsonVariant["motion"] = motion;
+        jsonVariant["light"] = light;
+        jsonVariant["fan"] = fan;
+        jsonVariant["light_decision"] = light_decision;
+        jsonVariant["fan_decision"] = fan_decision;
+    }
+
     float temp;
     float rh;
     bool motion;

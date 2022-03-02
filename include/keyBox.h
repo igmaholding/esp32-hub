@@ -145,10 +145,15 @@ class KeyBoxConfig
             {
                 Channel()
                 {
+                    clear();
+                }
+            
+                void clear()
+                {
                     gpio = gpio_num_t(-1);
                     inverted = false;
                 }
-            
+
                 void from_json(const JsonVariant & json);
 
                 void to_eprom(std::ostream & os) const;
@@ -239,10 +244,15 @@ class KeyBoxConfig
             {
                 Channel()
                 {
+                    clear();
+                }
+            
+                void clear()
+                {
                     gpio = gpio_num_t(-1);
                     inverted = false;
                 }
-            
+
                 void from_json(const JsonVariant & json);
 
                 void to_eprom(std::ostream & os) const;
@@ -324,6 +334,7 @@ class KeyBoxConfig
                     }
                 }
                 r += "]}";
+                return r;
             }
 
             struct Code
@@ -332,6 +343,11 @@ class KeyBoxConfig
                 {
                 }
             
+                void clear()
+                {
+                    value.clear();
+                }
+
                 void from_json(const JsonVariant & json);
 
                 void to_eprom(std::ostream & os) const;
@@ -372,7 +388,6 @@ class KeyBoxConfig
         };
 
         Codes codes;
-
 };
 
 
@@ -406,6 +421,15 @@ struct KeyBoxStatus
             value &= ~(1 << channel_number);
         }
     }
+
+    void to_json(JsonVariant & json)
+    {
+        json.createNestedObject("keybox");
+        JsonVariant jsonVariant = json["keybox"];
+
+        jsonVariant["value"] = value;
+    }
+
 
     uint32_t value;
 };

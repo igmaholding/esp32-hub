@@ -86,6 +86,44 @@ BODY:
     "light":{"channel":{"gpio":13, "inverted":true, "coilon_active":false}, "mode":"auto"}, 
     "fan":{"channel":{"gpio":14, "inverted":true, "coilon_active":false}, "rh_off":50, "rh_on":55, "mode":"auto"} 
     }
+},
+{
+    "function":"keybox", 
+    "config":{
+    "buzzer":{"channel":{"gpio":13, "inverted":true}},
+    "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}}, 
+                   {"channel":{"gpio":26, "inverted":false}}, 
+                   {"channel":{"gpio":27, "inverted":false}}, 
+                   {"channel":{"gpio":32, "inverted":false}},],
+              "l":[{"channel":{"gpio":34, "inverted":true}}, 
+                   {"channel":{"gpio":35, "inverted":true}}, 
+                   {"channel":{"gpio":14, "inverted":true}}, 
+                   {"channel":{"gpio":15, "inverted":true}},],
+              "debounce":250
+    },
+    "actuator":{"addr":[{"channel":{"gpio":17, "inverted":false}}, 
+                   {"channel":{"gpio":18, "inverted":false}}, 
+                   {"channel":{"gpio":19, "inverted":false}}, 
+                   {"channel":{"gpio":4, "inverted":false}},],
+                "coil": {"channel":{"gpio":22, "inverted":true},  
+                "status": {"channel":{"gpio":23, "inverted":false},  
+    }, 
+    "codes":{"code":["value":"512136", 
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"",
+                     "value":"" ]
+    }
 }]
 
 RESPONSE: 

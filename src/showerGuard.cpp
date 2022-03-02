@@ -8,17 +8,17 @@
 
 extern GpioHandler gpioHandler;
 
-void _err_dup(const char *name, int value)
+static void _err_dup(const char *name, int value)
 {
     ERROR("%s %d is duplicated / reused", name, value)
 }
 
-void _err_cap(const char *name, int value)
+static void _err_cap(const char *name, int value)
 {
     ERROR("%s %d, gpio doesn't have required capabilities", name, value)
 }
 
-void _err_val(const char *name, int value)
+static void _err_val(const char *name, int value)
 {
     ERROR("%s %d incorrect", name, value)
 }
@@ -646,7 +646,7 @@ protected:
     ShowerGuardAlgo algo;
 };
 
-ShowerGuardHandler handler;
+static ShowerGuardHandler handler;
 
 void ShowerGuardAlgo::start(const ShowerGuardConfig &config)
 {

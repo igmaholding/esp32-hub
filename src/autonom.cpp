@@ -77,6 +77,36 @@ ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
 }
 
 
+void AutonomTaskManager::startKeyBox(const KeyBoxConfig & config)
+{
+    TRACE("Starting autonom task keyBox")
+    start_keybox_task(config);
+    keyBoxActive = true;
+}
+
+
+void AutonomTaskManager::stopKeyBox()
+{
+    TRACE("stopping autonom task keyBox")
+    stop_keybox_task();
+    keyBoxActive = false;
+}
+
+
+void AutonomTaskManager::reconfigureKeyBox(const KeyBoxConfig & config)
+{
+    TRACE("reconfiguring autonom task keyBox")
+    reconfigure_keybox(config);
+}
+
+
+KeyBoxStatus AutonomTaskManager::getKeyBoxStatus() const
+{
+    TRACE("getKeyBoxStatus")
+    return get_keybox_status();
+}
+
+
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
@@ -84,6 +114,11 @@ void AutonomTaskManager::stopAll()
     if (showerGuardActive)
     {
         stopShowerGuard();
+    }
+
+    if (keyBoxActive)
+    {
+        stopKeyBox();
     }
 }
 
@@ -97,6 +132,8 @@ const char * function_type_2_str(FunctionType ft)
     {
         case ftShowerGuard:
             return "shower-guard";
+        case ftKeyBox:
+            return "keybox";
         default:
             return "<unknown>";    
     }
@@ -111,6 +148,7 @@ String setupAutonom(const JsonVariant & json)
     char buf[256];
 
     ShowerGuardConfig showerGuardConfig;
+    KeyBoxConfig keyBoxConfig;
 
     if (json.is<JsonArray>())
     {
@@ -168,6 +206,45 @@ String setupAutonom(const JsonVariant & json)
                     }
                 }
                 else
+                if (function == "keybox")
+                {
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        keyBoxConfig.from_json(config_json);
+
+                        TRACE("function %s: keyBoxConfig.is_valid=%s", function.c_str(), (keyBoxConfig.is_valid() ? "true" : "false"))
+                        TRACE(keyBoxConfig.as_string().c_str())
+
+                        if (keyBoxConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            keyBoxConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            epromImage.blocks.insert({(uint8_t) ftKeyBox, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+                }
+                else
                 {
                     sprintf(buf, "function %s is unknown", function.c_str());
                     ERROR(buf)
@@ -199,6 +276,12 @@ String setupAutonom(const JsonVariant & json)
                 {
                     autonomTaskManager.startShowerGuard(showerGuardConfig);
                 }
+                else
+                if (*it == ftKeyBox)
+                {
+                    autonomTaskManager.startKeyBox(keyBoxConfig);
+                }
+
             }
             for (auto it=removed.begin(); it!=removed.end(); ++it)
             {
@@ -206,12 +289,22 @@ String setupAutonom(const JsonVariant & json)
                 {
                     autonomTaskManager.stopShowerGuard();
                 }
+                else
+                if (*it == ftKeyBox)
+                {
+                    autonomTaskManager.stopKeyBox();
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
                 if (*it == ftShowerGuard)
                 {
                     autonomTaskManager.reconfigureShowerGuard(showerGuardConfig);
+                }
+                else
+                if (*it == ftKeyBox)
+                {
+                    autonomTaskManager.reconfigureKeyBox(keyBoxConfig);
                 }
             }
         }
@@ -262,16 +355,13 @@ void getAutonom(JsonVariant & json)
   if (autonomTaskManager.isShowerGuardActive())
   {
         ShowerGuardStatus status = autonomTaskManager.getShowerGuardStatus();
-        json.createNestedObject("shower-guard");
-        JsonVariant jsonVariant = json["shower-guard"];
+        status.to_json(json);
+  }
 
-        jsonVariant["temp"] = status.temp;
-        jsonVariant["rh"] = status.rh;
-        jsonVariant["motion"] = status.motion;
-        jsonVariant["light"] = status.light;
-        jsonVariant["fan"] = status.fan;
-        jsonVariant["light_decision"] = status.light_decision;
-        jsonVariant["fan_decision"] = status.fan_decision;
+  if (autonomTaskManager.isKeyBoxActive())
+  {
+        KeyBoxStatus status = autonomTaskManager.getKeyBoxStatus();
+        status.to_json(json);
   }
 }
 
@@ -303,6 +393,23 @@ void restoreAutonom()
                     TRACE("Config %s", config.as_string().c_str())
 
                     autonomTaskManager.startShowerGuard(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                break;
+
+              case ftKeyBox:
+                
+                {KeyBoxConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startKeyBox(config);
                 }
                 else
                 {
