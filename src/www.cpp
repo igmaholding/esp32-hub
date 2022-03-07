@@ -78,51 +78,44 @@ REST POST setup autonom
 URL: <base>/setup/autonom
 BODY: 
 [{
-    "function":"shower-guard", 
-    "config":{
-    "motion":{"channel":{"gpio":23, "inverted":true, "debounce":250}, "linger":300},
-    "rh":{"vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}}, 
-    "temp":{"channel":{"gpio":4}, "addr":"28-000009079138"}, 
-    "light":{"channel":{"gpio":13, "inverted":true, "coilon_active":false}, "mode":"auto"}, 
-    "fan":{"channel":{"gpio":14, "inverted":true, "coilon_active":false}, "rh_off":50, "rh_on":55, "mode":"auto"} 
-    }
-},
-{
     "function":"keybox", 
     "config":{
-    "buzzer":{"channel":{"gpio":13, "inverted":true}},
+    "buzzer":{"channel":{"gpio":13, "inverted":false}},
     "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}}, 
                    {"channel":{"gpio":26, "inverted":false}}, 
                    {"channel":{"gpio":27, "inverted":false}}, 
-                   {"channel":{"gpio":32, "inverted":false}},],
+                   {"channel":{"gpio":32, "inverted":false}}],
               "l":[{"channel":{"gpio":34, "inverted":true}}, 
                    {"channel":{"gpio":35, "inverted":true}}, 
                    {"channel":{"gpio":14, "inverted":true}}, 
-                   {"channel":{"gpio":15, "inverted":true}},],
+                   {"channel":{"gpio":15, "inverted":true}}],
               "debounce":250
     },
     "actuator":{"addr":[{"channel":{"gpio":17, "inverted":false}}, 
                    {"channel":{"gpio":18, "inverted":false}}, 
                    {"channel":{"gpio":19, "inverted":false}}, 
-                   {"channel":{"gpio":4, "inverted":false}},],
-                "coil": {"channel":{"gpio":22, "inverted":true},  
-                "status": {"channel":{"gpio":23, "inverted":false},  
+                   {"channel":{"gpio":4, "inverted":false}}],
+                "coil": {"channel":{"gpio":22, "inverted":true}},  
+                "status": {"channel":{"gpio":23, "inverted":false}}  
     }, 
-    "codes":{"code":["value":"512136", 
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"",
-                     "value":"" ]
+    "codes":{"code":[{"value":"512136"}, 
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""},
+                     {"value":""}
+                    ]
+    }
     }
 }]
 

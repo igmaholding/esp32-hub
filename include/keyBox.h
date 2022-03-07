@@ -1,4 +1,6 @@
 #include <ArduinoJson.h>
+#include <buzzer.h>
+#include <keypad.h>
 
 #define KEYBOX_NUM_CHANNELS 16  // max 32, limited by KeyBoxStatus; if change also update the Actuator.addr
 
@@ -42,150 +44,10 @@ class KeyBoxConfig
                    ", codes=" + codes.as_string() + "}";
         }
 
-        // data
-
-        struct Buzzer
-        {
-            Buzzer()
-            {
-            }
-
-            void from_json(const JsonVariant & json);
-
-            void to_eprom(std::ostream & os) const;
-            bool from_eprom(std::istream & is);
-
-            bool is_valid() const 
-            {
-                return channel.is_valid();
-            }
-
-            bool operator == (const Buzzer & buzzer) const
-            {
-                return channel == buzzer.channel;
-            }
-
-            String as_string() const
-            {
-                return String("{channel=") + channel.as_string() + "}";
-            }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                }
-            
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                
-            };
-            
-            Channel channel;            
-
-        };
         
-        Buzzer buzzer;
-    
-        struct Keypad
-        {
-            Keypad()
-            {
-                debounce = 0;
-            }
-
-            void from_json(const JsonVariant & json);
-
-            void to_eprom(std::ostream & os) const;
-            bool from_eprom(std::istream & is);
-
-            bool is_valid() const 
-            {
-                return c[0].is_valid() && c[1].is_valid() && c[2].is_valid() && c[3].is_valid() &&
-                       l[0].is_valid() && l[1].is_valid() && l[2].is_valid() && l[3].is_valid();
-            }
-
-            bool operator == (const Keypad & keypad) const
-            {
-                return c[0] == keypad.c[0] && c[1] == keypad.c[1] && c[2] == keypad.c[2] && c[3] == keypad.c[3] && 
-                       l[0] == keypad.l[0] && l[1] == keypad.l[1] && l[2] == keypad.l[2] && l[3] == keypad.l[3] &&
-                       debounce == keypad.debounce; 
-            }
-
-            String as_string() const
-            {
-                return String("{c=[") + c[0].as_string() + ", " + c[1].as_string() + ", " + c[2].as_string() + ", " + c[3].as_string() + "], " +
-                              "l=[" + l[0].as_string() + ", " + l[1].as_string() + ", " + l[2].as_string() + ", " + l[3].as_string() + "]" +
-                              ", debounce=" + String(debounce) + "}";
-            }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    clear();
-                }
+        BuzzerConfig buzzer;
             
-                void clear()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                }
-
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                
-            };
-            
-            Channel c[4];            
-            Channel l[4];            
-            uint16_t debounce;
-
-        };
-        
-        Keypad keypad;
+        KeypadConfig keypad;
 
 
         struct Actuator
