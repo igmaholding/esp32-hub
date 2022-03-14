@@ -6,10 +6,12 @@ void getAutonom(JsonVariant &);
 
 void restoreAutonom(); // from EPROM
 
+String actionAutonomKeyboxActuate(const String & channel_str);
+
 enum FunctionType
 {
     ftShowerGuard = 1,
-    ftKeyBox =      2,
+    ftKeybox =      2,
 };
 
 const char * function_type_2_str(FunctionType);

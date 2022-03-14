@@ -1,5 +1,5 @@
 #include <ArduinoJson.h>
-#include <keyBox.h>
+#include <keybox.h>
 #include <gpio.h>
 #include <trace.h>
 #include <binarySemaphore.h>
@@ -16,7 +16,7 @@ static void _err_cap(const char *name, int value)
     ERROR("%s %d, gpio doesn't have required capabilities", name, value)
 }
 
-bool KeyBoxConfig::is_valid() const
+bool KeyboxConfig::is_valid() const
 {
     bool r = buzzer.is_valid() && keypad.is_valid() && actuator.is_valid() && codes.is_valid();
 
@@ -92,17 +92,31 @@ bool KeyBoxConfig::is_valid() const
         }
     }
 
-    object_name = "actuator.coil";
+    object_name = "actuator.latch";
 
-    if (checkpad.get_usage(actuator.coil.gpio) != GpioCheckpad::uNone)
+    if (checkpad.get_usage(actuator.latch.gpio) != GpioCheckpad::uNone)
     {
-        _err_dup(object_name.c_str(), (int)actuator.coil.gpio);
+        _err_dup(object_name.c_str(), (int)actuator.latch.gpio);
         return false;
     }
 
-    if (!checkpad.set_usage(actuator.coil.gpio, GpioCheckpad::uDigitalOutput))
+    if (!checkpad.set_usage(actuator.latch.gpio, GpioCheckpad::uDigitalOutput))
     {
-        _err_cap(object_name.c_str(), (int)actuator.coil.gpio);
+        _err_cap(object_name.c_str(), (int)actuator.latch.gpio);
+        return false;
+    }
+
+    object_name = "actuator.power";
+
+    if (checkpad.get_usage(actuator.power.gpio) != GpioCheckpad::uNone)
+    {
+        _err_dup(object_name.c_str(), (int)actuator.power.gpio);
+        return false;
+    }
+
+    if (!checkpad.set_usage(actuator.power.gpio, GpioCheckpad::uDigitalOutput))
+    {
+        _err_cap(object_name.c_str(), (int)actuator.power.gpio);
         return false;
     }
 
@@ -123,7 +137,7 @@ bool KeyBoxConfig::is_valid() const
     return true;
 }
 
-void KeyBoxConfig::from_json(const JsonVariant &json)
+void KeyboxConfig::from_json(const JsonVariant &json)
 {
     if (json.containsKey("buzzer"))
     {
@@ -150,7 +164,7 @@ void KeyBoxConfig::from_json(const JsonVariant &json)
     }
 }
 
-void KeyBoxConfig::to_eprom(std::ostream &os) const
+void KeyboxConfig::to_eprom(std::ostream &os) const
 {
     os.write((const char *)&EPROM_VERSION, sizeof(EPROM_VERSION));
     buzzer.to_eprom(os);
@@ -159,7 +173,7 @@ void KeyBoxConfig::to_eprom(std::ostream &os) const
     codes.to_eprom(os);
 }
 
-bool KeyBoxConfig::from_eprom(std::istream &is)
+bool KeyboxConfig::from_eprom(std::istream &is)
 {
     uint8_t eprom_version = EPROM_VERSION;
 
@@ -175,128 +189,13 @@ bool KeyBoxConfig::from_eprom(std::istream &is)
     }
     else
     {
-        ERROR("Failed to read KeyBoxConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
+        ERROR("Failed to read KeyboxConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
         return false;
     }
 }
 
 
-void KeyBoxConfig::Actuator::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("addr"))
-    {
-        const JsonVariant &_json = json["addr"];
-
-        if (_json.is<JsonArray>())
-        {
-            size_t i=0;
-
-            for (; i<sizeof(addr)/sizeof(addr[0]); ++i)
-            {
-                addr[i].clear();
-            }
-            
-            const JsonArray & jsonArray = _json.as<JsonArray>();
-            auto iterator = jsonArray.begin();
-            i=0;
-
-            while(iterator != jsonArray.end() && i<sizeof(addr)/sizeof(addr[0]))
-            {
-                const JsonVariant & __json = *iterator;
-
-                if (__json.containsKey("channel"))
-                {
-                    const JsonVariant &_json_channel = __json["channel"];
-                    addr[i].from_json(_json_channel);
-                }
-
-                ++iterator;
-                ++i;;
-            }
-        }
-    }
-
-    if (json.containsKey("coil"))
-    {
-        const JsonVariant &_json = json["coil"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &_json_channel = _json["channel"];
-            coil.from_json(_json_channel);
-        }
-    }
-
-    if (json.containsKey("status"))
-    {
-        const JsonVariant &_json = json["status"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &_json_channel = _json["channel"];
-            status.from_json(_json_channel);
-        }
-    }
-}
-
-void KeyBoxConfig::Actuator::to_eprom(std::ostream &os) const
-{
-    for (size_t i=0; i<sizeof(addr)/sizeof(addr[0]); ++i)
-    {
-        addr[i].to_eprom(os);
-    }
-
-    coil.to_eprom(os);
-    status.to_eprom(os);
-}
-
-bool KeyBoxConfig::Actuator::from_eprom(std::istream &is)
-{
-    for (size_t i=0; i<sizeof(addr)/sizeof(addr[0]); ++i)
-    {
-        addr[i].from_eprom(is);
-    }
-
-    coil.from_eprom(is);
-    status.from_eprom(is);
-    return is_valid() && !is.bad();
-}
-
-void KeyBoxConfig::Actuator::Channel::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("gpio"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
-        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-    if (json.containsKey("inverted"))
-    {
-        inverted = (bool)((int)json["inverted"]);
-    }
-}
-
-void KeyBoxConfig::Actuator::Channel::to_eprom(std::ostream &os) const
-{
-    uint8_t gpio_uint8 = (uint8_t)gpio;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    int _inverted = inverted;
-    os.write((const char *)&_inverted, sizeof(_inverted));
-}
-
-bool KeyBoxConfig::Actuator::Channel::from_eprom(std::istream &is)
-{
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    gpio = (gpio_num_t)gpio_int8;
-
-    int _inverted = 0;
-    is.read((char *)&_inverted, sizeof(_inverted));
-    inverted = (bool) _inverted;
-    return is_valid() && !is.bad();
-}
-
-void KeyBoxConfig::Codes::from_json(const JsonVariant &json)
+void KeyboxConfig::Codes::from_json(const JsonVariant &json)
 {
     if (json.containsKey("code"))
     {
@@ -327,7 +226,7 @@ void KeyBoxConfig::Codes::from_json(const JsonVariant &json)
     }
 }
 
-void KeyBoxConfig::Codes::to_eprom(std::ostream &os) const
+void KeyboxConfig::Codes::to_eprom(std::ostream &os) const
 {
     for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
     {
@@ -335,7 +234,7 @@ void KeyBoxConfig::Codes::to_eprom(std::ostream &os) const
     }
 }
 
-bool KeyBoxConfig::Codes::from_eprom(std::istream &is)
+bool KeyboxConfig::Codes::from_eprom(std::istream &is)
 {
     for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
     {
@@ -344,7 +243,7 @@ bool KeyBoxConfig::Codes::from_eprom(std::istream &is)
     return is_valid() && !is.bad();
 }
 
-void KeyBoxConfig::Codes::Code::from_json(const JsonVariant &json)
+void KeyboxConfig::Codes::Code::from_json(const JsonVariant &json)
 {
     if (json.containsKey("value"))
     {
@@ -352,7 +251,7 @@ void KeyBoxConfig::Codes::Code::from_json(const JsonVariant &json)
     }
 }
 
-void KeyBoxConfig::Codes::Code::to_eprom(std::ostream &os) const
+void KeyboxConfig::Codes::Code::to_eprom(std::ostream &os) const
 {
     uint8_t len = value.length();
     os.write((const char *)&len, sizeof(len));
@@ -363,7 +262,7 @@ void KeyBoxConfig::Codes::Code::to_eprom(std::ostream &os) const
     }
 }
 
-bool KeyBoxConfig::Codes::Code::from_eprom(std::istream &is)
+bool KeyboxConfig::Codes::Code::from_eprom(std::istream &is)
 {
     uint8_t len = 0;
 
@@ -385,11 +284,11 @@ bool KeyBoxConfig::Codes::Code::from_eprom(std::istream &is)
 
 
 
-class KeyBoxHandler
+class KeyboxHandler
 {
 public:
 
-    KeyBoxHandler()
+    KeyboxHandler()
     {
         _is_active = false;
         _is_finished = true;
@@ -397,42 +296,36 @@ public:
 
     bool is_active() const { return _is_active; }
 
-    void start(const KeyBoxConfig &config);
+    void start(const KeyboxConfig &config);
     void stop();
-    void reconfigure(const KeyBoxConfig &config);
-
-    KeyBoxStatus get_status()
-    {
-        KeyBoxStatus _status;
-
-        {
-            Lock lock(semaphore);
-            _status = status;
-        }
-
-        return _status;
-    }
-
+    void reconfigure(const KeyboxConfig &config);
+    void actuate(size_t channel_number);
 
 protected:
     void configure_hw();
     static void configure_hw_buzzer(const BuzzerConfig &);
     static void configure_hw_keypad(const KeypadConfig &);
-    static void configure_hw_actuator(const KeyBoxConfig::Actuator &);
+    static void configure_hw_actuator(const KeyboxActuatorConfig &);
+
+    void handle_keypad_input(const String &);
 
     static void task(void *parameter);
 
     BinarySemaphore semaphore;
-    KeyBoxConfig config;
-    KeyBoxStatus status;
+    KeyboxConfig config;
     bool _is_active;
     bool _is_finished;
 
 };
 
-static KeyBoxHandler handler;
+static KeyboxHandler handler;
 
-void KeyBoxHandler::start(const KeyBoxConfig &_config)
+static void press_reflex()
+{
+    buzzer_one_short = true;
+}
+
+void KeyboxHandler::start(const KeyboxConfig &_config)
 {
     if (_is_active)
     {
@@ -461,7 +354,7 @@ void KeyBoxHandler::start(const KeyBoxConfig &_config)
     );
 }
 
-void KeyBoxHandler::stop()
+void KeyboxHandler::stop()
 {
     _is_active = false;
 
@@ -472,9 +365,10 @@ void KeyBoxHandler::stop()
 
     stop_buzzer_task();
     stop_keypad_task();
+    stop_keybox_actuator_task();
 }
 
-void KeyBoxHandler::reconfigure(const KeyBoxConfig &_config)
+void KeyboxHandler::reconfigure(const KeyboxConfig &_config)
 {
     Lock lock(semaphore);
 
@@ -486,17 +380,89 @@ void KeyBoxHandler::reconfigure(const KeyBoxConfig &_config)
     }
 }
 
-void KeyBoxHandler::task(void *parameter)
+void KeyboxHandler::handle_keypad_input(const String & keypad_input)
 {
-    KeyBoxHandler *_this = (KeyBoxHandler *)parameter;
+    TRACE("keypad input %s", keypad_input.c_str())
+
+    String keypad_input_value = keypad_input.substring(1,keypad_input.length()-1);
+
+    Lock lock(semaphore);
+    size_t channel = size_t(-1);
+
+    if (!keypad_input_value.isEmpty())
+    {
+        for (size_t i=0; i<KEYBOX_NUM_CHANNELS; ++i)
+        {
+            if (keypad_input_value == config.codes.code[i].value)
+            {
+                channel = i;
+                break;
+            }
+        }
+    }
+
+    if (channel != size_t(-1))
+    {
+        TRACE("code valid for channel %d", (int) channel)
+        actuate(channel);
+    }
+    else
+    {
+        TRACE("code invalid")
+        buzzer_one_long = true;
+    }
+}   
+
+void KeyboxHandler::actuate(size_t channel)
+{
+    ::actuate_channel(channel);
+    delay(100);
+    buzzer_series_short = true;
+}
+
+void KeyboxHandler::task(void *parameter)
+{
+    KeyboxHandler *_this = (KeyboxHandler *)parameter;
 
     TRACE("keybox_task: started")
     
     buzzer_one_long = true;
     
+    String keypad_input;
+
     while (_this->_is_active)
     {
-        delay(1000);
+        String keypad_queue = pop_keypad_queue();
+
+        for (size_t i=0; i<keypad_queue.length(); ++i)
+        {
+            if (keypad_queue[i] == '*')
+            {
+                keypad_input += keypad_queue[i];
+
+                if (keypad_input.length() >= 2)  // complete string
+                {
+                    _this->handle_keypad_input(keypad_input);
+                    keypad_input.clear();
+                }
+            }
+            else
+            {
+                if (keypad_input.isEmpty())
+                {
+                    // the input should start and end with a '*'
+                    // do nothing and warn with a signal
+
+                    buzzer_one_long = true;
+                }
+                else
+                {
+                    keypad_input += keypad_queue[i];
+                }
+            }
+        }
+
+        delay(100);
     }
 
     _this->_is_finished = true;
@@ -504,31 +470,34 @@ void KeyBoxHandler::task(void *parameter)
     vTaskDelete(NULL);
 }
 
-void KeyBoxHandler::configure_hw()
+void KeyboxHandler::configure_hw()
 {
+    TRACE("keybox_task: configure_hw")
     configure_hw_buzzer(config.buzzer);
     configure_hw_keypad(config.keypad);
     configure_hw_actuator(config.actuator);
+    TRACE("keybox_task: configure_hw done")
 }
 
-void KeyBoxHandler::configure_hw_buzzer(const BuzzerConfig & config)
+void KeyboxHandler::configure_hw_buzzer(const BuzzerConfig & config)
 {
     start_buzzer_task(config);
 }
 
 
-void KeyBoxHandler::configure_hw_keypad(const KeypadConfig & config)
+void KeyboxHandler::configure_hw_keypad(const KeypadConfig & config)
 {
-    start_keypad_task(config);
+    start_keypad_task(config, press_reflex);
 }
 
 
-void KeyBoxHandler::configure_hw_actuator(const KeyBoxConfig::Actuator &)
+void KeyboxHandler::configure_hw_actuator(const KeyboxActuatorConfig & config)
 {
+    start_keybox_actuator_task(config);
 }
 
 
-void start_keybox_task(const KeyBoxConfig &config)
+void start_keybox_task(const KeyboxConfig &config)
 {
     if (handler.is_active())
     {
@@ -546,12 +515,44 @@ void stop_keybox_task()
     handler.stop();
 }
 
-KeyBoxStatus get_keybox_status()
-{
-    return handler.get_status();
-}
-
-void reconfigure_keybox(const KeyBoxConfig &_config)
+void reconfigure_keybox(const KeyboxConfig &_config)
 {
     handler.reconfigure(_config);
+}
+
+
+String keybox_actuate(const String & channel_str)
+{
+    bool param_ok = true;
+
+    if (!channel_str.isEmpty())
+    {
+        for (size_t i=0; i<channel_str.length(); ++i)
+        {
+            if (isdigit(channel_str[i]) == false)
+            {
+                param_ok = false;
+                break;
+            } 
+        }
+
+        if (param_ok)
+        {
+            size_t channel = (size_t)  channel_str.toInt();
+
+            if (channel >= 0 && channel < KEYBOX_NUM_CHANNELS)
+            {
+                handler.actuate(channel);
+                return String();
+            }
+            else
+            {
+                return "Channel out of range";
+            }
+        }
+    }
+    else
+    {
+        param_ok = false;
+    }
 }

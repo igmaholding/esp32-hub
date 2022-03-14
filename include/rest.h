@@ -10,6 +10,8 @@ String restCleanup();
 String restCleanupPm();
 String restCleanupAutonom();
 
+String restActionAutonomKeyboxActuate(const String & channel_str);
+
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);
 

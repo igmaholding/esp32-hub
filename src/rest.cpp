@@ -182,6 +182,13 @@ String restResetPm(const String & resetStamp)
   return String("{}");
 }
 
+String restActionAutonomKeyboxActuate(const String & channel_str)
+{
+  TRACE("REST action autonom keybox actuate")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomKeyboxActuate(channel_str);
+}
 
 String restGet(const String & resetStamp) 
 {

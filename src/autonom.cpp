@@ -28,13 +28,15 @@ class AutonomTaskManager
 
         bool isShowerGuardActive() const { return showerGuardActive; }
 
-        void startKeyBox(const KeyBoxConfig &);
-        void stopKeyBox();
-        void reconfigureKeyBox(const KeyBoxConfig &);
+        void startKeybox(const KeyboxConfig &);
+        void stopKeybox();
+        void reconfigureKeybox(const KeyboxConfig &);
 
-        KeyBoxStatus getKeyBoxStatus() const;
+        String keyboxActuate(const String & channel_str);
 
-        bool isKeyBoxActive() const { return keyBoxActive; }
+        KeyboxStatus getKeyboxStatus() const;
+
+        bool isKeyboxActive() const { return keyBoxActive; }
 
         void stopAll();
 
@@ -77,7 +79,7 @@ ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
 }
 
 
-void AutonomTaskManager::startKeyBox(const KeyBoxConfig & config)
+void AutonomTaskManager::startKeybox(const KeyboxConfig & config)
 {
     TRACE("Starting autonom task keyBox")
     start_keybox_task(config);
@@ -85,7 +87,7 @@ void AutonomTaskManager::startKeyBox(const KeyBoxConfig & config)
 }
 
 
-void AutonomTaskManager::stopKeyBox()
+void AutonomTaskManager::stopKeybox()
 {
     TRACE("stopping autonom task keyBox")
     stop_keybox_task();
@@ -93,16 +95,20 @@ void AutonomTaskManager::stopKeyBox()
 }
 
 
-void AutonomTaskManager::reconfigureKeyBox(const KeyBoxConfig & config)
+void AutonomTaskManager::reconfigureKeybox(const KeyboxConfig & config)
 {
     TRACE("reconfiguring autonom task keyBox")
     reconfigure_keybox(config);
 }
 
-
-KeyBoxStatus AutonomTaskManager::getKeyBoxStatus() const
+String AutonomTaskManager::keyboxActuate(const String & channel_str)
 {
-    TRACE("getKeyBoxStatus")
+    return keybox_actuate(channel_str);
+}
+
+KeyboxStatus AutonomTaskManager::getKeyboxStatus() const
+{
+    TRACE("getKeyboxStatus")
     return get_keybox_status();
 }
 
@@ -118,7 +124,7 @@ void AutonomTaskManager::stopAll()
 
     if (keyBoxActive)
     {
-        stopKeyBox();
+        stopKeybox();
     }
 }
 
@@ -132,7 +138,7 @@ const char * function_type_2_str(FunctionType ft)
     {
         case ftShowerGuard:
             return "shower-guard";
-        case ftKeyBox:
+        case ftKeybox:
             return "keybox";
         default:
             return "<unknown>";    
@@ -148,7 +154,7 @@ String setupAutonom(const JsonVariant & json)
     char buf[256];
 
     ShowerGuardConfig showerGuardConfig;
-    KeyBoxConfig keyBoxConfig;
+    KeyboxConfig keyBoxConfig;
 
     if (json.is<JsonArray>())
     {
@@ -228,7 +234,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftKeyBox, buffer});
+                            epromImage.blocks.insert({(uint8_t) ftKeybox, buffer});
                         }
                         else
                         {
@@ -277,9 +283,9 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.startShowerGuard(showerGuardConfig);
                 }
                 else
-                if (*it == ftKeyBox)
+                if (*it == ftKeybox)
                 {
-                    autonomTaskManager.startKeyBox(keyBoxConfig);
+                    autonomTaskManager.startKeybox(keyBoxConfig);
                 }
 
             }
@@ -290,9 +296,9 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopShowerGuard();
                 }
                 else
-                if (*it == ftKeyBox)
+                if (*it == ftKeybox)
                 {
-                    autonomTaskManager.stopKeyBox();
+                    autonomTaskManager.stopKeybox();
                 }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
@@ -302,9 +308,9 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.reconfigureShowerGuard(showerGuardConfig);
                 }
                 else
-                if (*it == ftKeyBox)
+                if (*it == ftKeybox)
                 {
-                    autonomTaskManager.reconfigureKeyBox(keyBoxConfig);
+                    autonomTaskManager.reconfigureKeybox(keyBoxConfig);
                 }
             }
         }
@@ -348,6 +354,19 @@ void cleanupAutonom()
 }
 
 
+String actionAutonomKeyboxActuate(const String & channel_str)
+{
+    if (autonomTaskManager.isKeyboxActive())
+    {
+        return autonomTaskManager.keyboxActuate(channel_str);
+    }
+    else
+    {
+        return "Keybox not active";
+    }
+}
+
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -358,9 +377,9 @@ void getAutonom(JsonVariant & json)
         status.to_json(json);
   }
 
-  if (autonomTaskManager.isKeyBoxActive())
+  if (autonomTaskManager.isKeyboxActive())
   {
-        KeyBoxStatus status = autonomTaskManager.getKeyBoxStatus();
+        KeyboxStatus status = autonomTaskManager.getKeyboxStatus();
         status.to_json(json);
   }
 }
@@ -400,16 +419,16 @@ void restoreAutonom()
                 }}
                 break;
 
-              case ftKeyBox:
+              case ftKeybox:
                 
-                {KeyBoxConfig config;
+                {KeyboxConfig config;
                 
                 if (config.from_eprom(is) == true)
                 {
                     TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
                     TRACE("Config %s", config.as_string().c_str())
 
-                    autonomTaskManager.startKeyBox(config);
+                    autonomTaskManager.startKeybox(config);
                 }
                 else
                 {

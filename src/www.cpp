@@ -94,9 +94,10 @@ BODY:
     "actuator":{"addr":[{"channel":{"gpio":17, "inverted":false}}, 
                    {"channel":{"gpio":18, "inverted":false}}, 
                    {"channel":{"gpio":19, "inverted":false}}, 
-                   {"channel":{"gpio":4, "inverted":false}}],
-                "coil": {"channel":{"gpio":22, "inverted":true}},  
-                "status": {"channel":{"gpio":23, "inverted":false}}  
+                   {"channel":{"gpio":21, "inverted":false}}],
+                "latch": {"channel":{"gpio":23, "inverted":true}},  
+                "power": {"channel":{"gpio":4, "inverted":false}},  
+                "status": {"channel":{"gpio":22, "inverted":false}}  
     }, 
     "codes":{"code":[{"value":"512136"}, 
                      {"value":""},
@@ -118,7 +119,6 @@ BODY:
     }
     }
 }]
-
 RESPONSE: 
 {
 }
@@ -140,6 +140,30 @@ RESPONSE:
 REST POST cleanup autonom
 URL: <base>/cleanup/autonom
 BODY: none 
+RESPONSE: 
+{
+}
+
+
+
+REST POST action
+URL: <base>/action
+BODY: none
+RESPONSE: 
+{
+}
+
+
+REST POST action
+URL: <base>/action/autonom
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/keybox/actuate?channel=XX
+BODY: none
 RESPONSE: 
 {
 }
@@ -334,6 +358,34 @@ void on_cleanup_autonom()
     led_paired = true;
 }
 
+void on_action_autonom_keybox_actuate()
+{
+    String channel_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        r = restActionAutonomKeyboxActuate(channel_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", r.c_str());
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    led_blink_once = true;
+    led_paired = true;
+}
+
 void on_reset()
 {
     String resetStamp;
@@ -423,6 +475,7 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/cleanup", HTTP_POST, on_cleanup);
     webServer.on("/" HARVESTER_API_KEY "/cleanup/pm", HTTP_POST, on_cleanup_pm);
     webServer.on("/" HARVESTER_API_KEY "/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/keybox/actuate", HTTP_POST, on_action_autonom_keybox_actuate);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);
