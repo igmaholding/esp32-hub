@@ -172,6 +172,7 @@ static void uninstall_config()
 
 void keybox_actuator_task(void *parameter)
 {
+    size_t _millis_status_trace = 0;
 
     while (_is_active)
     {
@@ -251,6 +252,17 @@ void keybox_actuator_task(void *parameter)
         //      _debug2[0], _debug2[1], _debug2[2], _debug2[3], _debug2[4],
         //      _debug2[5], _debug2[6], _debug2[7], _debug2[8], _debug2[9],
         //      _debug2[10], _debug2[11], _debug2[12], _debug2[13], _debug2[14])
+
+        // summarize once a minute status of all channels in log
+
+        size_t new_millis_status_trace = millis();
+
+        if (_millis_status_trace == 0 || _millis_status_trace > new_millis_status_trace || 
+            (new_millis_status_trace - _millis_status_trace) >= 60*1000)
+        {
+            _millis_status_trace = new_millis_status_trace;
+            TRACE("status %s", _status.as_string().c_str())
+        }
 
         // keep channel addr to 0 by default
 

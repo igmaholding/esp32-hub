@@ -144,19 +144,24 @@ struct KeyboxStatus
     {
         json.createNestedObject("keybox");
         JsonVariant jsonVariant = json["keybox"];
+        jsonVariant["status"] = as_string() + " (1==unlocked)";
+    }
 
+    String as_string() const
+    {
         char buf[KEYBOX_NUM_CHANNELS*5+1];
         char * ptr = buf;
 
         for (size_t i=0; i<KEYBOX_NUM_CHANNELS;++i)
         {
             sprintf(ptr, "%d:%d%s", (int) i, (int) ((value & (1 << i)) ? 1 : 0), (i == KEYBOX_NUM_CHANNELS-1 ? "" : " "));
-            ptr = buf + strlen(ptr);
+            //sprintf(ptr, "%d:%d ", (int) i, (int) ((value & (1 << i)) ? 1 : 0));
+
+            ptr = buf + strlen(buf);
         }
 
-        jsonVariant["status"] = buf;
+        return buf;
     }
-
 
     uint32_t value;
 };
