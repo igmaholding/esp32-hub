@@ -555,4 +555,6 @@ String keybox_actuate(const String & channel_str)
     {
         param_ok = false;
     }
+    
+    return "Parameter error";
 }
