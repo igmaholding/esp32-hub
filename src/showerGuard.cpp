@@ -1098,7 +1098,7 @@ void ShowerGuardHandler::task(void *parameter)
 
             if (last_motion_hys != motion_hys || last_motion != motion)
             {
-                //DEBUG("motion=%d, motion_hys=%d", (int) motion, (int) motion_hys)
+                DEBUG("motion=%d, motion_hys=%d", (int) motion, (int) motion_hys)
 
                 if (last_motion_hys != motion_hys)
                 {
@@ -1253,7 +1253,8 @@ float ShowerGuardHandler::read_rh(const ShowerGuardConfig::Rh &rh, float temp)
     unsigned vdd = analog_read(rh.vdd.gpio);
 
     // uncomment this trace to calibrate voltage divider
-    //DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
+    // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
+    // DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
 
     if (vdd != 0)
     {

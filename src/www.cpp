@@ -62,10 +62,22 @@ BODY:
   "channels":
   [
       {
-          "gpio":23, "inverted":true, "debounce":250
+          "gpio":23, "inverted":true, "debounce":50
       },
       {
           "gpio":25, "inverted":true, "debounce":50
+      },
+      {
+          "gpio":26, "inverted":true, "debounce":50
+      },
+      {
+          "gpio":27, "inverted":true, "debounce":50
+      },
+      {
+          "gpio":32, "inverted":true, "debounce":50
+      },
+      {
+          "gpio":33, "inverted":true, "debounce":50
       }
   ]
 }
@@ -122,6 +134,20 @@ BODY:
 RESPONSE: 
 {
 }
+
+
+[{
+    "function":"shower-guard", 
+    "config":{
+                "motion":{"channel":{"gpio":23, "inverted":0, "debounce":250}},
+                "rh":{"vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}, "corr":0.0}, 
+                "temp":{"channel":{"gpio":4}, "addr":"28-01201d2496c8", "corr":0}, 
+                "light":{"channel":{"gpio":12, "inverted":0, "coilon_active":0}, "mode":"auto", "linger":60}, 
+                "fan":{"channel":{"gpio":13, "inverted":0, "coilon_active":0}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
+
+    }
+}]
+
 
 REST POST cleanup
 URL: <base>/cleanup
