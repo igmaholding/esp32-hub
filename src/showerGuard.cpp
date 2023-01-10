@@ -1,3 +1,5 @@
+#ifdef INCLUDE_SHOWERGUARD
+
 #include <ArduinoJson.h>
 #include <showerGuard.h>
 #include <gpio.h>
@@ -5,6 +7,8 @@
 #include <binarySemaphore.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+
+#define CALIBRATE_RH 0
 
 extern GpioHandler gpioHandler;
 
@@ -554,6 +558,9 @@ public:
     String get_last_light_decision() const;
     String get_last_fan_decision() const;
 
+    void debug_last_light_decision() const;
+    void debug_last_fan_decision() const;
+
 protected:
     void init();
 
@@ -720,14 +727,14 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
         }
     }
 
-    if (light == false && motion_light == true)
+    if (motion_light == true)
     {
         sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), light_linger);
         last_light_decision[0] = buf;
     }
-    else if (light == true && motion_light == false)
+    else 
     {
-        last_light_decision[0] = "";
+        last_light_decision[0] = "linger out";
     }
 
     light = motion_light;
@@ -762,6 +769,19 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
                 rh_toggle = false;
                 sprintf(buf, "rh-soft-down at %s", time_t_2_str(now_time).c_str());
                 last_fan_decision[0] = buf;
+
+                DEBUG("rh_sliding_window at rh_toggle condition")
+                String dbg_str;
+
+                for (int i=0;i<sizeof(rh_sliding_window)/sizeof(rh_sliding_window[0]);++i)
+                {    
+                    if (i > 0)
+                    {
+                        dbg_str += ",";
+                    }
+                    dbg_str += rh_sliding_window[i];
+                }
+                DEBUG("[%s]", dbg_str.c_str())
             }
         }
     }
@@ -773,12 +793,12 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
 
     if (motion_fan == true)
     {
-        if (fan == false)
-        {
+        //if (fan == false)
+        //{
             fan = true;
             sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), fan_linger);
             last_fan_decision[1] = buf;
-        }
+        //}
     }
     else
     {
@@ -799,7 +819,7 @@ void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
         last_light_decision[1] = "";
     }
 
-    if (fan_mode != ShowerGuardConfig::Light::mAuto)
+    if (fan_mode != ShowerGuardConfig::Fan::mAuto)
     {
         fan = fan_mode == ShowerGuardConfig::Fan::mOn ? true : false;
         last_fan_decision[2] = "nonauto-mode";
@@ -834,6 +854,32 @@ String ShowerGuardAlgo::get_last_fan_decision() const
     }
 
     return String("");
+}
+
+void ShowerGuardAlgo::debug_last_light_decision() const
+{
+    DEBUG("last_light_decision:")
+
+    for (int i = sizeof(last_light_decision) / sizeof(last_light_decision[0]) - 1; i >= 0; --i)
+    {
+        if (!last_light_decision[i].isEmpty() || i==0)
+        {
+            DEBUG("[%d]=%s", i, last_light_decision[i].c_str())
+        }
+    }
+}
+
+void ShowerGuardAlgo::debug_last_fan_decision() const
+{
+    DEBUG("last_fan_decision:")
+
+    for (int i = sizeof(last_fan_decision) / sizeof(last_fan_decision[0]) - 1; i >= 0; --i)
+    {
+        if (!last_fan_decision[i].isEmpty() || i==0)
+        {
+            DEBUG("[%d]=%s", i, last_fan_decision[i].c_str())
+        }
+    }
 }
 
 void ShowerGuardAlgo::init()
@@ -1067,10 +1113,15 @@ void ShowerGuardHandler::task(void *parameter)
 
                     rh = new_rh;
                     do_algo_loop = true;
+                    DEBUG("do_algo_loop rh")
                 }
             }
             else
             {
+                if (CALIBRATE_RH)  // to make trace more often, this is calibration mode only
+                {
+                    _this->read_rh(_this->config.rh, temp);
+                }
                 rh_read_slot_count--;
             }
 
@@ -1104,6 +1155,7 @@ void ShowerGuardHandler::task(void *parameter)
                 {
                     logging_slot_count = 0;
                     do_algo_loop = true;
+                    DEBUG("do_algo_loop motion")
                 }
             }
 
@@ -1156,6 +1208,10 @@ void ShowerGuardHandler::task(void *parameter)
 
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}",
                   temp, rh, (int)motion_hys, (int)light, (int)fan, status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
+
+            _this->algo.debug_last_light_decision();
+            _this->algo.debug_last_fan_decision();
+
         }
         else
         {
@@ -1252,13 +1308,15 @@ float ShowerGuardHandler::read_rh(const ShowerGuardConfig::Rh &rh, float temp)
     unsigned vad = analog_read(rh.vad.gpio);
     unsigned vdd = analog_read(rh.vdd.gpio);
 
-    // uncomment this trace to calibrate voltage divider
-    // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
-    // DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
+    if (CALIBRATE_RH)
+    {
+        // trace to calibrate voltage divider
+        // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
+        DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
+    }
 
     if (vdd != 0)
     {
-
         // the formula with temperatore compensation
         // (((Vout/VS)-0.1515)/0.00636) / (1.0546-0.00216*T) = (RH )
 
@@ -1408,3 +1466,5 @@ void reconfigure_shower_guard(const ShowerGuardConfig &_config)
 {
     handler.reconfigure(_config);
 }
+
+#endif // INCLUDE_SHOWERGUARD

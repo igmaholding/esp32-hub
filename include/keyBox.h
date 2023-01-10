@@ -1,3 +1,5 @@
+#ifdef INCLUDE_KEYBOX
+
 #include <ArduinoJson.h>
 #include <buzzer.h>
 #include <keypad.h>
@@ -162,3 +164,5 @@ void stop_keybox_task();
 void reconfigure_keybox(const KeyboxConfig &);
 
 String keybox_actuate(const String & channel_str);
+
+#endif // INCLUDE_KEYBOX

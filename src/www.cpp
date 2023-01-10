@@ -244,6 +244,17 @@ RESPONSE:
     ]
 }
 
+REST GET get autonom
+URL: <base>/get/autonom
+BODY: none
+RESPONSE: 
+{
+ "shower-guard":{"temp":22.1,"rh":19.8,"motion":false,"light":false,"fan":false,"light_decision":"","fan_decision":"rh-low 44.7/45.0 at 2022-12-16 11:04:53"},   
+ {'keybox': {'status': '0:0 1:1 2:1 3:1 4:0 5:1 6:1 7:1 8:0 9:0 10:1 11:0 12:1 13:1 14:0 (1==unlocked)'}, 
+ 'system': {'uptime': '46d 22h 02m 10s'}
+
+}
+
 */
 
 void on_restart()
@@ -327,7 +338,15 @@ void on_setup_pm()
 
     String r = restSetupPm(body, resetStamp);
 
-    webServer.send(200, "application/json", r.c_str());
+    if (r.length() == 0)
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
     led_blink_once = true;
     led_paired = true;
 }

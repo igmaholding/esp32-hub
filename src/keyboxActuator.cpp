@@ -1,3 +1,5 @@
+#ifdef INCLUDE_KEYBOX
+
 #include <Arduino.h>
 #include <keyboxActuator.h>
 #include <gpio.h>
@@ -380,3 +382,5 @@ void stop_keybox_actuator_task()
 
     uninstall_config();
 }
+
+#endif // INCLUDE_KEYBOX

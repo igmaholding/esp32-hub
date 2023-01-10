@@ -6,8 +6,9 @@
 #include <gpio.h>
 #include <trace.h>
 
-extern GpioHandler gpioHandler;
+#ifdef INCLUDE_PM
 
+extern GpioHandler gpioHandler;
 
 unsigned counter = 0;
 
@@ -190,19 +191,26 @@ void IRAM_ATTR PmHandler::interruptHandler(gpio_num_t gpioNum)
   }
 }
 
+#endif // INCLUDE_PM
 
 void pingPm(JsonVariant & json)
 {
   TRACE("pingPm")
   
+  #ifdef INCLUDE_PM
+
   json["reset_stamp"] = pmHandler.reset_stamp;
   json["is_configured"] = pmHandler.is_configured;
+
+  #endif
 }
 
 
-void setupPm(const JsonVariant & json, const String & reset_stamp) 
+String setupPm(const JsonVariant & json, const String & reset_stamp) 
 {
   TRACE("setupPm")
+
+  #ifdef INCLUDE_PM
 
   if (json.containsKey("channels"))
   {
@@ -272,11 +280,23 @@ void setupPm(const JsonVariant & json, const String & reset_stamp)
   }
   
   pmHandler.is_configured = true;
+
+  return String();
+
+  #else
+
+  const char * msg = "Attempt to configure function pm which is not built in current module";
+  ERROR(msg)
+  return String(msg);
+
+  #endif // INCLUDE_PM
 }
 
 void cleanupPm() 
 {
   TRACE("cleanupPm")
+
+  #ifdef INCLUDE_PM
 
   std::vector<gpio_num_t> gpio_num_list;
   pmHandler.enumerateChannels(gpio_num_list);
@@ -293,6 +313,12 @@ void cleanupPm()
 
   pmHandler.reset_stamp.clear();
   pmHandler.is_configured = false;
+
+  #else
+
+  ERROR("Attempt to cleanup function pm which is not built in current module")
+
+  #endif // INCLUDE_PM
 }
 
 
@@ -300,8 +326,12 @@ void resetPm(const String & reset_stamp)
 {
   TRACE("resetPm")
   DEBUG("reset_stamp %s", reset_stamp.c_str())
-  
+
+  #ifdef INCLUDE_PM
+
   pmHandler.reset(reset_stamp);
+
+  #endif
 }
 
 
@@ -309,6 +339,8 @@ void getPm(JsonVariant & json, const String & reset_stamp)
 {
     TRACE("getPm")
   
+    #ifdef INCLUDE_PM
+
     json["is_configured"] = pmHandler.is_configured;
 
     if (pmHandler.is_configured)
@@ -339,4 +371,11 @@ void getPm(JsonVariant & json, const String & reset_stamp)
             pmHandler.reset(reset_stamp);
         }
     }
+
+  #else
+
+
+  #endif // INCLUDE_PM
+
 }
+

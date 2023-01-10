@@ -1,3 +1,5 @@
+#ifdef INCLUDE_KEYBOX
+
 #include <ArduinoJson.h>
 
 #define KEYBOX_NUM_CHANNELS 15  // max 32, limited by KeyBoxStatus; if change also update the Actuator.addr
@@ -174,6 +176,6 @@ void start_keybox_actuator_task(const KeyboxActuatorConfig &);
 void stop_keybox_actuator_task();
 void reconfigure_keybox_actuator_task(const KeyboxActuatorConfig &);
 
-
+#endif // INCLUDE_KEYBOX
 
 

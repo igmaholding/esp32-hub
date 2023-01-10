@@ -42,9 +42,30 @@ String restPing(bool include_info)
 
   jsonDocument["version"] = REST_VERSION;
 
+  jsonDocument.createNestedArray("sw_caps");
+  JsonArray sw_caps = jsonDocument["sw_caps"]; 
+
+  #ifdef INCLUDE_PM 
+
+  sw_caps.add("pm");
+
   jsonDocument.createNestedObject("pm");
   JsonVariant pm = jsonDocument["pm"];
   pingPm(pm);
+
+  #endif
+
+  #ifdef INCLUDE_SHOWERGUARD
+
+  sw_caps.add("showerGuard");
+
+  #endif
+
+  #ifdef INCLUDE_KEYBOX
+
+  sw_caps.add("keybox");
+
+  #endif
 
   if (include_info)
   {
@@ -109,9 +130,9 @@ String restSetupPm(const String & body, const String & resetStamp)
 
   deserializeJson(jsonDocument, body);
 
-  setupPm(jsonDocument.as<JsonVariant>(), resetStamp);
+  String none_or_error = setupPm(jsonDocument.as<JsonVariant>(), resetStamp);
   
-  return String("{}");
+  return none_or_error;
 }
 
 
@@ -196,9 +217,14 @@ String restGet(const String & resetStamp)
 
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
+  #ifdef INCLUDE_PM 
+
   jsonDocument.createNestedObject("pm");
   JsonVariant pm = jsonDocument["pm"];
   getPm(pm, resetStamp);
+
+  #endif
+
   jsonDocument.createNestedObject("autonom");
   JsonVariant autonom = jsonDocument["autonom"];
   getAutonom(autonom);

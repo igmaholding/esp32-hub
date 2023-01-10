@@ -1,3 +1,5 @@
+#ifdef INCLUDE_KEYBOX
+
 #include <ArduinoJson.h>
 #include <keybox.h>
 #include <gpio.h>
@@ -558,3 +560,5 @@ String keybox_actuate(const String & channel_str)
     
     return "Parameter error";
 }
+
+#endif // INCLUDE_KEYBOX

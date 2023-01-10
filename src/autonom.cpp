@@ -5,7 +5,11 @@
 
 #include <autonom.h>
 #include <showerGuard.h>
+
+#ifdef INCLUDE_KEYBOX
 #include <keyBox.h>
+#endif
+
 #include <trace.h>
 #include <epromImage.h>
 
@@ -20,6 +24,8 @@ class AutonomTaskManager
             keyBoxActive = false;
         }
 
+        #ifdef INCLUDE_SHOWERGUARD
+
         void startShowerGuard(const ShowerGuardConfig &);
         void stopShowerGuard();
         void reconfigureShowerGuard(const ShowerGuardConfig &);
@@ -28,6 +34,10 @@ class AutonomTaskManager
 
         bool isShowerGuardActive() const { return showerGuardActive; }
 
+        #endif
+
+        #ifdef INCLUDE_KEYBOX
+        
         void startKeybox(const KeyboxConfig &);
         void stopKeybox();
         void reconfigureKeybox(const KeyboxConfig &);
@@ -37,6 +47,8 @@ class AutonomTaskManager
         KeyboxStatus getKeyboxStatus() const;
 
         bool isKeyboxActive() const { return keyBoxActive; }
+        
+        #endif
 
         void stopAll();
 
@@ -48,6 +60,7 @@ class AutonomTaskManager
 
 };
 
+#ifdef INCLUDE_SHOWERGUARD
 
 void AutonomTaskManager::startShowerGuard(const ShowerGuardConfig & config)
 {
@@ -78,6 +91,9 @@ ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
     return get_shower_guard_status();
 }
 
+#endif // INCLUDE_SHOWERGUARD
+
+#ifdef INCLUDE_KEYBOX
 
 void AutonomTaskManager::startKeybox(const KeyboxConfig & config)
 {
@@ -112,20 +128,29 @@ KeyboxStatus AutonomTaskManager::getKeyboxStatus() const
     return get_keybox_status();
 }
 
+#endif // INCLUDE_KEYBOX
 
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
+    
+    #ifdef INCLUDE_SHOWERGUARD
 
     if (showerGuardActive)
     {
         stopShowerGuard();
     }
 
+    #endif
+
+    # if INCLUDE_KEYBOX
+
     if (keyBoxActive)
     {
         stopKeybox();
     }
+
+    #endif
 }
 
 
@@ -153,8 +178,13 @@ String setupAutonom(const JsonVariant & json)
     EpromImage epromImage;
     char buf[256];
 
+    #ifdef INCLUDE_SHOWERGUARD
     ShowerGuardConfig showerGuardConfig;
+    #endif
+
+    #ifdef INCLUDE_KEYBOX
     KeyboxConfig keyBoxConfig;
+    #endif
 
     if (json.is<JsonArray>())
     {
@@ -175,6 +205,8 @@ String setupAutonom(const JsonVariant & json)
 
                 if (function == "shower-guard")
                 {
+                    #ifdef INCLUDE_SHOWERGUARD
+
                     if (_json.containsKey("config"))
                     {
                         DEBUG("contains config")
@@ -210,10 +242,20 @@ String setupAutonom(const JsonVariant & json)
                         ERROR(buf)
                         return String(buf);
                     }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_SHOWERGUARD
                 }
                 else
                 if (function == "keybox")
                 {
+                    #ifdef INCLUDE_KEYBOX
+
                     if (_json.containsKey("config"))
                     {
                         DEBUG("contains config")
@@ -249,6 +291,14 @@ String setupAutonom(const JsonVariant & json)
                         ERROR(buf)
                         return String(buf);
                     }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_KEYBOX
                 }
                 else
                 {
@@ -280,12 +330,16 @@ String setupAutonom(const JsonVariant & json)
             {
                 if (*it == ftShowerGuard)
                 {
+                    #ifdef INCLUDE_SHOWERGUARD
                     autonomTaskManager.startShowerGuard(showerGuardConfig);
+                    #endif
                 }
                 else
                 if (*it == ftKeybox)
                 {
+                    #ifdef INCLUDE_KEYBOX
                     autonomTaskManager.startKeybox(keyBoxConfig);
+                    #endif
                 }
 
             }
@@ -293,24 +347,32 @@ String setupAutonom(const JsonVariant & json)
             {
                 if (*it == ftShowerGuard)
                 {
+                    #ifdef INCLUDE_SHOWERGUARD
                     autonomTaskManager.stopShowerGuard();
+                    #endif
                 }
                 else
                 if (*it == ftKeybox)
                 {
+                    #ifdef INCLUDE_KEYBOX
                     autonomTaskManager.stopKeybox();
+                    #endif
                 }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
                 if (*it == ftShowerGuard)
                 {
+                    #ifdef INCLUDE_SHOWERGUARD
                     autonomTaskManager.reconfigureShowerGuard(showerGuardConfig);
+                    #endif
                 }
                 else
                 if (*it == ftKeybox)
                 {
+                    #ifdef INCLUDE_KEYBOX
                     autonomTaskManager.reconfigureKeybox(keyBoxConfig);
+                    #endif
                 }
             }
         }
@@ -353,9 +415,9 @@ void cleanupAutonom()
     autonomTaskManager.stopAll();
 }
 
-
 String actionAutonomKeyboxActuate(const String & channel_str)
 {
+    #ifdef INCLUDE_KEYBOX
     if (autonomTaskManager.isKeyboxActive())
     {
         return autonomTaskManager.keyboxActuate(channel_str);
@@ -364,24 +426,36 @@ String actionAutonomKeyboxActuate(const String & channel_str)
     {
         return "Keybox not active";
     }
-}
+    
+    #else
 
+    return "Keybox is not built in currrent module";
+
+    #endif // INCLUDE_KEYBOX
+}
 
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
 
+  #ifdef INCLUDE_SHOWERGUARD
   if (autonomTaskManager.isShowerGuardActive())
   {
         ShowerGuardStatus status = autonomTaskManager.getShowerGuardStatus();
         status.to_json(json);
   }
+  #endif
 
+  #ifdef INCLUDE_KEYBOX
   if (autonomTaskManager.isKeyboxActive())
   {
         KeyboxStatus status = autonomTaskManager.getKeyboxStatus();
         status.to_json(json);
   }
+  
+  #else
+
+  #endif // INCLUDE_KEYBOX
 }
 
 
@@ -404,6 +478,7 @@ void restoreAutonom()
           {
               case ftShowerGuard:
                 
+                #ifdef INCLUDE_SHOWERGUARD
                 {ShowerGuardConfig config;
                 
                 if (config.from_eprom(is) == true)
@@ -417,10 +492,12 @@ void restoreAutonom()
                 {
                     TRACE("Config read failure")
                 }}
+                #endif
                 break;
 
               case ftKeybox:
                 
+                #ifdef INCLUDE_KEYBOX
                 {KeyboxConfig config;
                 
                 if (config.from_eprom(is) == true)
@@ -434,6 +511,7 @@ void restoreAutonom()
                 {
                     TRACE("Config read failure")
                 }}
+                #endif // INCLUDE_KEYBOX
                 break;
 
               default:

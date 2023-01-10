@@ -1,3 +1,5 @@
+#ifdef INCLUDE_SHOWERGUARD
+
 #include <ArduinoJson.h>
 
 class ShowerGuardConfig
@@ -479,3 +481,5 @@ void stop_shower_guard_task();
 ShowerGuardStatus get_shower_guard_status();
 
 void reconfigure_shower_guard(const ShowerGuardConfig &);
+
+#endif // INCLUDE_SHOWERGUARD
