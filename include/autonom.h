@@ -12,6 +12,7 @@ enum FunctionType
 {
     ftShowerGuard = 1,
     ftKeybox =      2,
+    ftAudio =       3
 };
 
 const char * function_type_2_str(FunctionType);

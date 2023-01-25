@@ -25,12 +25,14 @@ RESPONSE:
 {
     "version": "1.0",
     
+    "sw_caps": ["pm", "keybox", "showerGuard"],
+      
     "pm":
       {   
         "reset_stamp": "GHJKLM",
         "is_configured": true
       },
-      
+
   # if ?info parameter is given include:
   # wifi info
 
@@ -148,6 +150,27 @@ RESPONSE:
     }
 }]
 
+[{
+    "function":"audio", 
+    "config":{
+        "motion":{"channel":{"gpio":23, "inverted":0, "debounce":250}},
+        "onoff":2,
+        "delay":300,
+        "i2s":{"dout":{"channel":{"gpio":25}}, "bclk":{"channel":{"gpio":27}},"lrc":{"channel":{"gpio":26}}},
+        "service":{"url":[{"value":"http://fm03-ice.stream.khz.se/fm03_aac"}, 
+                          {"value":"http://mp3.ffh.de/radioffh/hqlivestream.aac"},
+                          {"value":"http://vis.media-ice.musicradio.com/Heart00s"},
+                          {"value":"http://fm03-ice.stream.khz.se/fm04_aac"},
+                          {"value":"http://fm03-ice.stream.khz.se/fm01_aac"}
+                         ],
+                   "url_select": 1},
+        "sound":{"volume":10, "volume_low":6, 
+                 "gain_low_pass":0, "gain_band_pass":-7, "gain_high_pass":3,
+                 "schedule":[0,0,0,0,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2]}                
+    }
+}]
+
+
 
 REST POST cleanup
 URL: <base>/cleanup
@@ -251,6 +274,19 @@ RESPONSE:
 {
  "shower-guard":{"temp":22.1,"rh":19.8,"motion":false,"light":false,"fan":false,"light_decision":"","fan_decision":"rh-low 44.7/45.0 at 2022-12-16 11:04:53"},   
  {'keybox': {'status': '0:0 1:1 2:1 3:1 4:0 5:1 6:1 7:1 8:0 9:0 10:1 11:0 12:1 13:1 14:0 (1==unlocked)'}, 
+
+ {
+    "audio": {
+        "motion": "true",
+        "is_streaming": "true",
+        "volume": 10,
+        "url_index": 1,
+        "bitrate": 128000,
+        "title": "Du horst HIT RADIO FFH"
+    }
+ }
+
+
  'system': {'uptime': '46d 22h 02m 10s'}
 
 }

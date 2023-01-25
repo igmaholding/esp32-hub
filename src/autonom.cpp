@@ -4,10 +4,17 @@
 #include <sstream>
 
 #include <autonom.h>
+
+#ifdef INCLUDE_SHOWERGUARD
 #include <showerGuard.h>
+#endif
 
 #ifdef INCLUDE_KEYBOX
 #include <keyBox.h>
+#endif
+
+#ifdef INCLUDE_AUDIO
+#include <aaudio.h>
 #endif
 
 #include <trace.h>
@@ -21,7 +28,8 @@ class AutonomTaskManager
         AutonomTaskManager()
         {
             showerGuardActive = false;
-            keyBoxActive = false;
+            keyboxActive = false;
+            audioActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -46,7 +54,19 @@ class AutonomTaskManager
 
         KeyboxStatus getKeyboxStatus() const;
 
-        bool isKeyboxActive() const { return keyBoxActive; }
+        bool isKeyboxActive() const { return keyboxActive; }
+        
+        #endif
+
+        #ifdef INCLUDE_AUDIO
+        
+        void startAudio(const AudioConfig &);
+        void stopAudio();
+        void reconfigureAudio(const AudioConfig &);
+
+        AudioStatus getAudioStatus() const;
+
+        bool isAudioActive() const { return audioActive; }
         
         #endif
 
@@ -56,7 +76,8 @@ class AutonomTaskManager
     protected:
 
         bool showerGuardActive;
-        bool keyBoxActive;
+        bool keyboxActive;
+        bool audioActive;
 
 };
 
@@ -69,7 +90,6 @@ void AutonomTaskManager::startShowerGuard(const ShowerGuardConfig & config)
     showerGuardActive = true;
 }
 
-
 void AutonomTaskManager::stopShowerGuard()
 {
     TRACE("stopping autonom task showerGuard")
@@ -77,13 +97,11 @@ void AutonomTaskManager::stopShowerGuard()
     showerGuardActive = false;
 }
 
-
 void AutonomTaskManager::reconfigureShowerGuard(const ShowerGuardConfig & config)
 {
     TRACE("reconfiguring autonom task showerGuard")
     reconfigure_shower_guard(config);
 }
-
 
 ShowerGuardStatus AutonomTaskManager::getShowerGuardStatus() const
 {
@@ -99,17 +117,15 @@ void AutonomTaskManager::startKeybox(const KeyboxConfig & config)
 {
     TRACE("Starting autonom task keyBox")
     start_keybox_task(config);
-    keyBoxActive = true;
+    keyboxActive = true;
 }
-
 
 void AutonomTaskManager::stopKeybox()
 {
     TRACE("stopping autonom task keyBox")
     stop_keybox_task();
-    keyBoxActive = false;
+    keyboxActive = false;
 }
-
 
 void AutonomTaskManager::reconfigureKeybox(const KeyboxConfig & config)
 {
@@ -130,6 +146,36 @@ KeyboxStatus AutonomTaskManager::getKeyboxStatus() const
 
 #endif // INCLUDE_KEYBOX
 
+#ifdef INCLUDE_AUDIO
+
+void AutonomTaskManager::startAudio(const AudioConfig & config)
+{
+    TRACE("Starting autonom task audio")
+    start_audio_task(config);
+    audioActive = true;
+}
+
+void AutonomTaskManager::stopAudio()
+{
+    TRACE("stopping autonom task audio")
+    stop_audio_task();
+    audioActive = false;
+}
+
+void AutonomTaskManager::reconfigureAudio(const AudioConfig & config)
+{
+    TRACE("reconfiguring autonom task audio")
+    reconfigure_audio(config);
+}
+
+AudioStatus AutonomTaskManager::getAudioStatus() const
+{
+    TRACE("getAudioStatus")
+    return get_audio_status();
+}
+
+#endif // INCLUDE_AUDIO
+
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
@@ -145,9 +191,18 @@ void AutonomTaskManager::stopAll()
 
     # if INCLUDE_KEYBOX
 
-    if (keyBoxActive)
+    if (keyboxActive)
     {
         stopKeybox();
+    }
+
+    #endif
+
+    # if INCLUDE_AUDIO
+
+    if (audioActive)
+    {
+        stopAudio();
     }
 
     #endif
@@ -165,11 +220,12 @@ const char * function_type_2_str(FunctionType ft)
             return "shower-guard";
         case ftKeybox:
             return "keybox";
+        case ftAudio:
+            return "audio";
         default:
             return "<unknown>";    
     }
 }
-
 
 String setupAutonom(const JsonVariant & json) 
 {
@@ -184,6 +240,10 @@ String setupAutonom(const JsonVariant & json)
 
     #ifdef INCLUDE_KEYBOX
     KeyboxConfig keyBoxConfig;
+    #endif
+
+    #ifdef INCLUDE_AUDIO
+    AudioConfig audioConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -301,6 +361,55 @@ String setupAutonom(const JsonVariant & json)
                     #endif // INCLUDE_KEYBOX
                 }
                 else
+                if (function == "audio")
+                {
+                    #ifdef INCLUDE_AUDIO
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        audioConfig.from_json(config_json);
+
+                        TRACE("function %s: audioConfig.is_valid=%s", function.c_str(), (audioConfig.is_valid() ? "true" : "false"))
+                        TRACE(audioConfig.as_string().c_str())
+
+                        if (audioConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            audioConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            epromImage.blocks.insert({(uint8_t) ftAudio, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_AUDIO
+                }
+                else
                 {
                     sprintf(buf, "function %s is unknown", function.c_str());
                     ERROR(buf)
@@ -341,6 +450,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.startKeybox(keyBoxConfig);
                     #endif
                 }
+                else
+                if (*it == ftAudio)
+                {
+                    #ifdef INCLUDE_AUDIO
+                    autonomTaskManager.startAudio(audioConfig);
+                    #endif
+                }
 
             }
             for (auto it=removed.begin(); it!=removed.end(); ++it)
@@ -358,6 +474,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopKeybox();
                     #endif
                 }
+                else
+                if (*it == ftAudio)
+                {
+                    #ifdef INCLUDE_AUDIO
+                    autonomTaskManager.stopAudio();
+                    #endif
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
@@ -372,6 +495,13 @@ String setupAutonom(const JsonVariant & json)
                 {
                     #ifdef INCLUDE_KEYBOX
                     autonomTaskManager.reconfigureKeybox(keyBoxConfig);
+                    #endif
+                }
+                else
+                if (*it == ftAudio)
+                {
+                    #ifdef INCLUDE_AUDIO
+                    autonomTaskManager.reconfigureAudio(audioConfig);
                     #endif
                 }
             }
@@ -391,7 +521,6 @@ String setupAutonom(const JsonVariant & json)
 
     return String();
 }
-
 
 void cleanupAutonom() 
 {
@@ -453,11 +582,18 @@ void getAutonom(JsonVariant & json)
         status.to_json(json);
   }
   
-  #else
-
   #endif // INCLUDE_KEYBOX
-}
 
+  #ifdef INCLUDE_AUDIO
+  if (autonomTaskManager.isAudioActive())
+  {
+        AudioStatus status = autonomTaskManager.getAudioStatus();
+        status.to_json(json);
+  }
+
+  #endif
+
+}
 
 void restoreAutonom() 
 {
@@ -512,6 +648,25 @@ void restoreAutonom()
                     TRACE("Config read failure")
                 }}
                 #endif // INCLUDE_KEYBOX
+                break;
+
+              case ftAudio:
+                
+                #ifdef INCLUDE_AUDIO
+                {AudioConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startAudio(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_AUDIO
                 break;
 
               default:

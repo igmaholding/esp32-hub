@@ -67,6 +67,12 @@ String restPing(bool include_info)
 
   #endif
 
+  #ifdef INCLUDE_AUDIO
+
+  sw_caps.add("audio");
+
+  #endif
+
   if (include_info)
   {
     jsonDocument["wifiinfo"] = wifiHandler.getWifiInfo();

@@ -5,6 +5,7 @@
 #include <map>
 #include <time.h>
 #include <eeprom.h>
+#include <esp_log.h>
 
 #include <autonom.h>
 #include <wifiHandler.h>
@@ -70,14 +71,21 @@ void print_ntp_time()
 void setup()
 {
     start_onboard_led_task();
+    led_just_started = true;
 
     Serial.begin(9600);
 
     EEPROM.begin(EEPROM_SIZE);
 
+    TRACE("Total heap: %d", ESP.getHeapSize())
+    TRACE("Free heap: %d", ESP.getFreeHeap())
+    TRACE("Total PSRAM: %d", ESP.getPsramSize())
+    TRACE("Free PSRAM: %d", ESP.getFreePsram())
+
     restoreAutonom();
 
     initKnownNetworks(knownNetworks);
+    //delay(3000);
     connectWifi();
     TRACE("Fetching date and time from NTP ...")
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);

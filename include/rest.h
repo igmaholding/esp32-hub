@@ -21,4 +21,4 @@ String restGetAutonom();
 
 String restPopLog();
 
-#define REST_VERSION  "1.2" 
+#define REST_VERSION  "1.3" 
