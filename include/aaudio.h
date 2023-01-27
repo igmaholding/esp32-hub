@@ -455,8 +455,8 @@ struct AudioStatus
         json.createNestedObject("audio");
         JsonVariant jsonVariant = json["audio"];
 
-        jsonVariant["motion"] = motion ? "true" : "false";
-        jsonVariant["is_streaming"] = is_streaming ? "true" : "false";
+        jsonVariant["motion"] = motion;
+        jsonVariant["is_streaming"] = is_streaming;
         jsonVariant["volume"] = volume;
         jsonVariant["url_index"] = url_index;
 
