@@ -1,12 +1,13 @@
 #ifdef INCLUDE_SHOWERGUARD
 
 #include <ArduinoJson.h>
+#include <digitalInputChannelConfig.h>
 
 class ShowerGuardConfig
 {
     public:
 
-        const uint8_t EPROM_VERSION = 2;
+        const uint8_t EPROM_VERSION = 3;
 
         ShowerGuardConfig()
         {
@@ -17,6 +18,7 @@ class ShowerGuardConfig
             motion = config.motion;
             rh = config.rh;
             temp = config.temp;
+            lumi = config.lumi;
             light = config.light;
             fan = config.fan;
 
@@ -32,13 +34,14 @@ class ShowerGuardConfig
 
         bool operator == (const ShowerGuardConfig & config) const
         {
-            return motion == config.motion && rh == config.rh && temp == config.temp && light == config.light && fan == config.fan;
+            return motion == config.motion && rh == config.rh && temp == config.temp && lumi == config.lumi && 
+                   light == config.light && fan == config.fan;
         }
 
         String as_string() const
         {
             return String("{motion=") + motion.as_string() + ", rh=" + rh.as_string() + ", temp=" + temp.as_string() + 
-                   ", light=" + light.as_string() + ", fan=" + fan.as_string() + "}";
+                   ", lumi=" + lumi.as_string() + ", light=" + light.as_string() + ", fan=" + fan.as_string() + "}";
         }
 
         // data
@@ -68,43 +71,8 @@ class ShowerGuardConfig
             {
                 return String("{channel=") + channel.as_string() + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                    debounce = 0;
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted && debounce == channel.debounce;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + ", debounce=" + String(debounce) + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                uint16_t debounce;
-                
-            };
-            
-            Channel channel;            
+            DigitalInputChannelConfig channel;            
 
         };
         
@@ -244,6 +212,90 @@ class ShowerGuardConfig
         };
         
         Temp temp;
+
+        struct Lumi
+        {
+            Lumi()
+            {
+                clear();
+            }
+
+            void clear()
+            {
+                corr = 0;
+                ldr.clear();
+                threshold = 0;
+            }
+
+            bool is_configured() const
+            {
+                return ldr.is_valid();
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                return true; // reservation for not installed == ldr's channel == -1
+            }
+
+            bool operator == (const Lumi & lumi) const
+            {
+                return ldr == lumi.ldr && corr == lumi.corr && threshold == lumi.threshold;
+            }
+
+            String as_string() const
+            {
+                return String("{ldr=") + ldr.as_string() + ", corr=" + corr + ", threshold=" + threshold + "}";
+            }
+
+            struct Channel
+            {
+                Channel()
+                {
+                   clear();
+                }
+            
+                void clear()
+                {
+                    gpio = gpio_num_t(-1);
+                    atten = 0;
+                }
+
+                void from_json(const JsonVariant & json);
+
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
+                bool is_valid() const 
+                {
+                    return gpio != gpio_num_t(-1);
+                }
+
+                bool operator == (const Channel & channel) const
+                {
+                    return gpio == channel.gpio && atten == channel.atten;
+                }
+
+                String as_string() const
+                {
+                    return String("{gpio=") + String((int)(gpio)) + ", atten=" + String(atten) + "}";
+                }
+
+                gpio_num_t gpio;
+                uint8_t atten;
+                
+            };
+            
+            Channel ldr;
+            float corr;
+            float threshold;            
+        };
+        
+        Lumi lumi;
 
         struct Light
         {
@@ -412,6 +464,8 @@ struct ShowerGuardStatus
     {
         temp = 0;
         rh = 0;
+        luminance_percent = 0;
+        light_luminance_mask = true;
         motion = false;
         light = false;
         fan = false;
@@ -429,6 +483,8 @@ struct ShowerGuardStatus
         temp = other.temp;
         rh = other.rh;
         motion = other.motion;
+        luminance_percent = other.luminance_percent;
+        light_luminance_mask = other.light_luminance_mask;
         light = other.light;
         fan = other.fan;
         light_decision = other.light_decision;
@@ -445,6 +501,8 @@ struct ShowerGuardStatus
         temp = other.temp;
         rh = other.rh;
         motion = other.motion;
+        luminance_percent = other.luminance_percent;
+        light_luminance_mask = other.light_luminance_mask;
         light = other.light;
         fan = other.fan;
         light_decision = other.light_decision;
@@ -461,6 +519,8 @@ struct ShowerGuardStatus
         jsonVariant["temp"] = temp;
         jsonVariant["rh"] = rh;
         jsonVariant["motion"] = motion;
+        jsonVariant["luminance_percent"] = luminance_percent;
+        jsonVariant["light_luminance_mask"] = light_luminance_mask;
         jsonVariant["light"] = light;
         jsonVariant["fan"] = fan;
         jsonVariant["light_decision"] = light_decision;
@@ -470,6 +530,8 @@ struct ShowerGuardStatus
     float temp;
     float rh;
     bool motion;
+    float luminance_percent;
+    bool light_luminance_mask;
     bool light;
     bool fan;
     String light_decision;

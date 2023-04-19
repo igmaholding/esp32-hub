@@ -4,7 +4,7 @@
 #include <buzzer.h>
 #include <keypad.h>
 #include <keyboxActuator.h>
-
+#include <digitalInputChannelConfig.h>
 
 class AudioConfig
 {
@@ -95,43 +95,8 @@ class AudioConfig
             {
                 return String("{channel=") + channel.as_string() + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                    debounce = 0;
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted && debounce == channel.debounce;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + ", debounce=" + String(debounce) + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                uint16_t debounce;
-                
-            };
-            
-            Channel channel;            
+            DigitalInputChannelConfig channel;            
 
         };
         

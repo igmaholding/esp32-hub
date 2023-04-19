@@ -144,8 +144,9 @@ RESPONSE:
                 "motion":{"channel":{"gpio":23, "inverted":0, "debounce":250}},
                 "rh":{"vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}, "corr":0.0}, 
                 "temp":{"channel":{"gpio":4}, "addr":"28-01201d2496c8", "corr":0}, 
-                "light":{"channel":{"gpio":12, "inverted":0, "coilon_active":0}, "mode":"auto", "linger":60}, 
-                "fan":{"channel":{"gpio":13, "inverted":0, "coilon_active":0}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
+                "lumi":{"ldr":{"channel":{"gpio":32, "atten":3}}, "corr":0.0, "threshold":12.3}, 
+                "light":{"channel":{"gpio":12, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":60}, 
+                "fan":{"channel":{"gpio":13, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
 
     }
 }]
@@ -170,7 +171,15 @@ RESPONSE:
     }
 }]
 
+[{
+    "function":"rfid-lock", 
+    "config":{
+                "rfid":{"protocol":"SPI", "hw":"RC522", "resetPowerDownPin":13, "chipSelectPin":5, "sclPin":22, "sdaPin":21, "i2cAddress":40},
+                "lock":{"channels":[{"gpio":12, "inverted":0, "coilon_active":1}], "linger":3},
+                "buzzer":{"channel":{"gpio":27, "inverted":false}}
 
+    }
+}]
 
 REST POST cleanup
 URL: <base>/cleanup
@@ -212,6 +221,27 @@ RESPONSE:
 
 REST POST action
 URL: <base>/action/autonom/keybox/actuate?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/program?code=47HuF9CemtholcVCz9A6
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/add?name=igma,code=47HuF9CemtholcVCz9A6,access=255
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/remove?name=igma
 BODY: none
 RESPONSE: 
 {
@@ -298,7 +328,7 @@ void on_restart()
     TRACE("*** RESTART REQUESTED VIA REST ***")
 
     webServer.send(200, "application/json", "{}");
-    led_blink_once = true;
+    onboard_led_blink_once = true;
 
     delay(5000);
     ESP.restart();
@@ -315,16 +345,16 @@ void on_ping()
 
     String r = restPing(include_info);
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_wifiinfo()
 {
     String r = restWifiInfo();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_setup()
@@ -349,8 +379,8 @@ void on_setup()
     String r = restSetup(body, resetStamp);
 
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_setup_pm()
@@ -383,8 +413,8 @@ void on_setup_pm()
         webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
     }
 
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_setup_autonom()
@@ -411,32 +441,32 @@ void on_setup_autonom()
         webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
     }
 
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_cleanup()
 {
     String r = restCleanup();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_cleanup_pm()
 {
     String r = restCleanupPm();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_cleanup_autonom()
 {
     String r = restCleanupAutonom();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_action_autonom_keybox_actuate()
@@ -456,15 +486,43 @@ void on_action_autonom_keybox_actuate()
 
     if (r.isEmpty())
     {
-        webServer.send(200, "application/json", r.c_str());
+        webServer.send(200, "application/json", "{}");
     }
     else
     {
         webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
     }
 
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_rfid_lock_program()
+{
+    String code_str;
+    String r;    
+
+    if (webServer.hasArg("code") == true)
+    {
+        code_str = webServer.arg("code");        
+        r = restActionAutonomRfidLockProgram(code_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_reset()
@@ -478,8 +536,8 @@ void on_reset()
 
     String r = restReset(resetStamp);
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_reset_pm()
@@ -493,8 +551,8 @@ void on_reset_pm()
 
     String r = restResetPm(resetStamp);
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_get()
@@ -508,8 +566,8 @@ void on_get()
 
     String r = restGet(resetStamp);
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_get_pm()
@@ -524,8 +582,8 @@ void on_get_pm()
 
     String r = restGetPm(resetStamp);
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_get_autonom()
@@ -533,16 +591,16 @@ void on_get_autonom()
     DEBUG("on_get_autonom")
     String r = restGetAutonom();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void on_pop_log()
 {
     String r = restPopLog();
     webServer.send(200, "application/json", r.c_str());
-    led_blink_once = true;
-    led_paired = true;
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
 }
 
 void wwwSetupRouting()
@@ -557,6 +615,7 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/cleanup/pm", HTTP_POST, on_cleanup_pm);
     webServer.on("/" HARVESTER_API_KEY "/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/keybox/actuate", HTTP_POST, on_action_autonom_keybox_actuate);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/program", HTTP_POST, on_action_autonom_rfid_lock_program);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);

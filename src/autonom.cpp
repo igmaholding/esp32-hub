@@ -17,6 +17,10 @@
 #include <aaudio.h>
 #endif
 
+#ifdef INCLUDE_RFIDLOCK
+#include <rfidLock.h>
+#endif
+
 #include <trace.h>
 #include <epromImage.h>
 
@@ -30,6 +34,7 @@ class AutonomTaskManager
             showerGuardActive = false;
             keyboxActive = false;
             audioActive = false;
+            rfidLockActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -70,6 +75,20 @@ class AutonomTaskManager
         
         #endif
 
+        #ifdef INCLUDE_RFIDLOCK
+        
+        void startRfidLock(const RfidLockConfig &);
+        void stopRfidLock();
+        void reconfigureRfidLock(const RfidLockConfig &);
+        
+        String rfidLockProgram(const String & code_str);
+        
+        RfidLockStatus getRfidLockStatus() const;
+
+        bool isRfidLockActive() const { return rfidLockActive; }
+        
+        #endif
+
         void stopAll();
 
 
@@ -78,6 +97,7 @@ class AutonomTaskManager
         bool showerGuardActive;
         bool keyboxActive;
         bool audioActive;
+        bool rfidLockActive;
 
 };
 
@@ -176,6 +196,41 @@ AudioStatus AutonomTaskManager::getAudioStatus() const
 
 #endif // INCLUDE_AUDIO
 
+#ifdef INCLUDE_RFIDLOCK
+
+void AutonomTaskManager::startRfidLock(const RfidLockConfig & config)
+{
+    TRACE("Starting autonom task rfid-lock")
+    start_rfid_lock_task(config);
+    rfidLockActive = true;
+}
+
+void AutonomTaskManager::stopRfidLock()
+{
+    TRACE("stopping autonom task rfid_lock")
+    stop_rfid_lock_task();
+    rfidLockActive = false;
+}
+
+void AutonomTaskManager::reconfigureRfidLock(const RfidLockConfig & config)
+{
+    TRACE("reconfiguring autonom task rfid-lock")
+    reconfigure_rfid_lock(config);
+}
+
+String AutonomTaskManager::rfidLockProgram(const String & code_str)
+{
+    return rfid_lock_program(code_str);
+}
+
+RfidLockStatus AutonomTaskManager::getRfidLockStatus() const
+{
+    TRACE("getRfidLockStatus")
+    return get_rfid_lock_status();
+}
+
+#endif // INCLUDE_RFIDLOCK
+
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
@@ -222,6 +277,8 @@ const char * function_type_2_str(FunctionType ft)
             return "keybox";
         case ftAudio:
             return "audio";
+        case ftRfidLock:
+            return "rfid-lock";
         default:
             return "<unknown>";    
     }
@@ -244,6 +301,10 @@ String setupAutonom(const JsonVariant & json)
 
     #ifdef INCLUDE_AUDIO
     AudioConfig audioConfig;
+    #endif
+
+    #ifdef INCLUDE_RFIDLOCK
+    RfidLockConfig rfidLockConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -410,6 +471,55 @@ String setupAutonom(const JsonVariant & json)
                     #endif // INCLUDE_AUDIO
                 }
                 else
+                if (function == "rfid-lock")
+                {
+                    #ifdef INCLUDE_RFIDLOCK
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        rfidLockConfig.from_json(config_json);
+
+                        TRACE("function %s: rfidLockConfig.is_valid=%s", function.c_str(), (rfidLockConfig.is_valid() ? "true" : "false"))
+                        TRACE(rfidLockConfig.as_string().c_str())
+
+                        if (rfidLockConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            rfidLockConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            epromImage.blocks.insert({(uint8_t) ftRfidLock, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_AUDIO
+                }
+                else
                 {
                     sprintf(buf, "function %s is unknown", function.c_str());
                     ERROR(buf)
@@ -457,6 +567,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.startAudio(audioConfig);
                     #endif
                 }
+                else
+                if (*it == ftRfidLock)
+                {
+                    #ifdef INCLUDE_RFIDLOCK
+                    autonomTaskManager.startRfidLock(rfidLockConfig);
+                    #endif
+                }
 
             }
             for (auto it=removed.begin(); it!=removed.end(); ++it)
@@ -481,6 +598,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopAudio();
                     #endif
                 }
+                else
+                if (*it == ftRfidLock)
+                {
+                    #ifdef INCLUDE_RFIDLOCK
+                    autonomTaskManager.stopRfidLock();
+                    #endif
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
@@ -502,6 +626,13 @@ String setupAutonom(const JsonVariant & json)
                 {
                     #ifdef INCLUDE_AUDIO
                     autonomTaskManager.reconfigureAudio(audioConfig);
+                    #endif
+                }
+                else
+                if (*it == ftRfidLock)
+                {
+                    #ifdef INCLUDE_RFIDLOCK
+                    autonomTaskManager.reconfigureRfidLock(rfidLockConfig);
                     #endif
                 }
             }
@@ -563,6 +694,25 @@ String actionAutonomKeyboxActuate(const String & channel_str)
     #endif // INCLUDE_KEYBOX
 }
 
+String actionAutonomRfidLockProgram(const String & code_str)
+{
+    #ifdef INCLUDE_RFIDLOCK
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        return autonomTaskManager.rfidLockProgram(code_str);
+    }
+    else
+    {
+        return "RfidLock not active";
+    }
+    
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -593,6 +743,14 @@ void getAutonom(JsonVariant & json)
 
   #endif
 
+  #ifdef INCLUDE_RFIDLOCK
+  if (autonomTaskManager.isRfidLockActive())
+  {
+        RfidLockStatus status = autonomTaskManager.getRfidLockStatus();
+        status.to_json(json);
+  }
+
+  #endif
 }
 
 void restoreAutonom() 
@@ -667,6 +825,25 @@ void restoreAutonom()
                     TRACE("Config read failure")
                 }}
                 #endif // INCLUDE_AUDIO
+                break;
+
+              case ftRfidLock:
+                
+                #ifdef INCLUDE_RFIDLOCK
+                {RfidLockConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startRfidLock(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_RFIDLOCK
                 break;
 
               default:

@@ -29,7 +29,7 @@ static void _err_val(const char *name, int value)
 
 bool ShowerGuardConfig::is_valid() const
 {
-    bool r = motion.is_valid() && rh.is_valid() && temp.is_valid() && light.is_valid() && fan.is_valid();
+    bool r = motion.is_valid() && rh.is_valid() && temp.is_valid() && lumi.is_valid() && light.is_valid() && fan.is_valid();
 
     if (r == false)
     {
@@ -90,6 +90,29 @@ bool ShowerGuardConfig::is_valid() const
     {
         _err_val(object_name, (int)rh.vdd.atten);
         return false;
+    }
+
+    object_name = "lumi.ldr";
+
+    if (lumi.is_configured())
+    {
+        if (checkpad.get_usage(lumi.ldr.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)lumi.ldr.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(lumi.ldr.gpio, GpioCheckpad::uAnalogInput))
+        {
+            _err_cap(object_name, (int)lumi.ldr.gpio);
+            return false;
+        }
+
+        if (checkpad.check_attenuation(lumi.ldr.atten) == adc_attenuation_t(-1))
+        {
+            _err_val(object_name, (int)lumi.ldr.atten);
+            return false;
+        }
     }
 
     object_name = "temp.channel.gpio";
@@ -157,6 +180,14 @@ void ShowerGuardConfig::from_json(const JsonVariant &json)
         temp.from_json(_json);
     }
 
+    lumi.clear();
+
+    if (json.containsKey("lumi"))
+    {
+        const JsonVariant &_json = json["lumi"];
+        lumi.from_json(_json);
+    }
+
     if (json.containsKey("light"))
     {
         const JsonVariant &_json = json["light"];
@@ -176,6 +207,7 @@ void ShowerGuardConfig::to_eprom(std::ostream &os) const
     motion.to_eprom(os);
     rh.to_eprom(os);
     temp.to_eprom(os);
+    lumi.to_eprom(os);
     light.to_eprom(os);
     fan.to_eprom(os);
 }
@@ -191,6 +223,7 @@ bool ShowerGuardConfig::from_eprom(std::istream &is)
         motion.from_eprom(is);
         rh.from_eprom(is);
         temp.from_eprom(is);
+        lumi.from_eprom(is);
         light.from_eprom(is);
         fan.from_eprom(is);
         return is_valid() && !is.bad();
@@ -219,48 +252,6 @@ void ShowerGuardConfig::Motion::to_eprom(std::ostream &os) const
 bool ShowerGuardConfig::Motion::from_eprom(std::istream &is)
 {
     channel.from_eprom(is);
-    return is_valid() && !is.bad();
-}
-
-void ShowerGuardConfig::Motion::Channel::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("gpio"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
-        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-    if (json.containsKey("inverted"))
-    {
-        inverted = json["inverted"];
-    }
-    if (json.containsKey("debounce"))
-    {
-        debounce = (unsigned)((int)json["debounce"]);
-    }
-}
-
-void ShowerGuardConfig::Motion::Channel::to_eprom(std::ostream &os) const
-{
-    uint8_t gpio_uint8 = (uint8_t)gpio;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    uint8_t inverted_uint8 = (uint8_t)inverted;
-    os.write((const char *)&inverted_uint8, sizeof(inverted_uint8));
-
-    os.write((const char *)&debounce, sizeof(debounce));
-}
-
-bool ShowerGuardConfig::Motion::Channel::from_eprom(std::istream &is)
-{
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    gpio = (gpio_num_t)gpio_int8;
-
-    uint8_t inverted_uint8 = (uint8_t) false;
-    is.read((char *)&inverted_uint8, sizeof(inverted_uint8));
-    inverted = (bool)inverted_uint8;
-
-    is.read((char *)&debounce, sizeof(debounce));
     return is_valid() && !is.bad();
 }
 
@@ -330,6 +321,79 @@ void ShowerGuardConfig::Rh::Channel::to_eprom(std::ostream &os) const
 }
 
 bool ShowerGuardConfig::Rh::Channel::from_eprom(std::istream &is)
+{
+    int8_t gpio_int8 = (int8_t)-1;
+    is.read((char *)&gpio_int8, sizeof(gpio_int8));
+    gpio = (gpio_num_t)gpio_int8;
+
+    is.read((char *)&atten, sizeof(atten));
+    return is_valid() && !is.bad();
+}
+
+void ShowerGuardConfig::Lumi::from_json(const JsonVariant &json)
+{
+    clear();
+
+    if (json.containsKey("ldr"))
+    {
+        const JsonVariant &_json = json["ldr"];
+
+        if (_json.containsKey("channel"))
+        {
+            const JsonVariant &__json = _json["channel"];
+            ldr.from_json(__json);
+        }
+    }
+    if (json.containsKey("corr"))
+    {
+        corr = json["corr"];
+    }
+    if (json.containsKey("threshold"))
+    {
+        threshold = json["threshold"];
+    }
+}
+
+void ShowerGuardConfig::Lumi::to_eprom(std::ostream &os) const
+{
+    ldr.to_eprom(os);
+    os.write((const char *)&corr, sizeof(corr));
+    os.write((const char *)&threshold, sizeof(threshold));
+}
+
+bool ShowerGuardConfig::Lumi::from_eprom(std::istream &is)
+{
+    ldr.from_eprom(is);
+    is.read((char *)&corr, sizeof(corr));
+    is.read((char *)&threshold, sizeof(threshold));
+
+    return is_valid() && !is.bad();
+}
+
+void ShowerGuardConfig::Lumi::Channel::from_json(const JsonVariant &json)
+{
+    clear();
+
+    if (json.containsKey("gpio"))
+    {
+        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
+        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
+    }
+    if (json.containsKey("atten"))
+    {
+        atten = (unsigned)((int)json["atten"]);
+    }
+}
+
+void ShowerGuardConfig::Lumi::Channel::to_eprom(std::ostream &os) const
+{
+    uint8_t gpio_uint8 = (uint8_t)gpio;
+    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
+
+    os.write((const char *)&atten, sizeof(atten));
+}
+
+bool ShowerGuardConfig::Lumi::Channel::from_eprom(std::istream &is)
 {
     int8_t gpio_int8 = (int8_t)-1;
     is.read((char *)&gpio_int8, sizeof(gpio_int8));
@@ -596,12 +660,14 @@ class ShowerGuardHandler
 public:
     static const unsigned TEMP_READ_SLOT = 60;
     static const unsigned RH_READ_SLOT = 10;
+    static const unsigned LUMI_READ_SLOT = 5;
     static const unsigned MOTION_HYS = 10;
     static const unsigned LOGGING_SLOT = 60;
 
     ShowerGuardHandler()
     {
         _is_active = false;
+        _is_finished = true;
         ds18b20.setOneWire(&ow);
     }
 
@@ -630,12 +696,14 @@ protected:
     static void configure_hw_rh(const ShowerGuardConfig::Rh &rh);
     void configure_hw_temp();
     static void configure_hw_motion(const ShowerGuardConfig::Motion &motion);
+    static void configure_hw_lumi(const ShowerGuardConfig::Lumi &lumi);
     static void configure_hw_light(const ShowerGuardConfig::Light &light);
     static void configure_hw_fan(const ShowerGuardConfig::Fan &fan);
 
     static float read_rh(const ShowerGuardConfig::Rh &rh, float temp);
     bool read_temp(float &temp);
     static bool read_motion(const ShowerGuardConfig::Motion &motion);
+    static float read_lumi(const ShowerGuardConfig::Lumi &lumi);
 
     static void write_light(const ShowerGuardConfig::Light &light, bool value);
     static void write_fan(const ShowerGuardConfig::Fan &fan, bool value);
@@ -646,6 +714,7 @@ protected:
     ShowerGuardConfig config;
     ShowerGuardStatus status;
     bool _is_active;
+    bool _is_finished;
 
     OneWire ow;
     DallasTemperature ds18b20;
@@ -987,11 +1056,17 @@ void ShowerGuardHandler::start(const ShowerGuardConfig &_config)
         return; // already running
     }
 
+    while(_is_finished == false)
+    {
+        delay(100);
+    }
+
     config = _config;
     configure_hw();
     algo.start(config);
 
     _is_active = true;
+    _is_finished = false;
 
     xTaskCreate(
         task,                // Function that should be called
@@ -1011,6 +1086,11 @@ void ShowerGuardHandler::stop()
     }
 
     _is_active = false;
+
+    while(_is_finished == false)
+    {
+        delay(100);
+    }
 }
 
 void ShowerGuardHandler::reconfigure(const ShowerGuardConfig &_config)
@@ -1034,6 +1114,7 @@ void ShowerGuardHandler::task(void *parameter)
 
     unsigned temp_read_slot_count = 0;
     unsigned rh_read_slot_count = 0;
+    unsigned lumi_read_slot_count = 0;
     unsigned logging_slot_count = 0;
 
     float rh = 60.0;
@@ -1044,6 +1125,9 @@ void ShowerGuardHandler::task(void *parameter)
     size_t rh_avg_window_pos = 0;
 
     float temp = 20.0;
+
+    float luminance_percent = 0;
+    bool light_luminance_mask = true;
 
     // here is a short hysteresis loop for motion since the sensor would reset to 0 after its internal timeout even if the
     // motion continues
@@ -1125,6 +1209,17 @@ void ShowerGuardHandler::task(void *parameter)
                 rh_read_slot_count--;
             }
 
+            if (lumi_read_slot_count == 0)
+            {
+                luminance_percent = _this->read_lumi(_this->config.lumi);
+                //DEBUG("luminance_percent %f", luminance_percent)
+                lumi_read_slot_count = LUMI_READ_SLOT - 1;
+            }
+            else
+            {
+                lumi_read_slot_count--;
+            }
+
             bool last_motion_hys = motion_hys;
             bool last_motion = motion;
 
@@ -1174,7 +1269,23 @@ void ShowerGuardHandler::task(void *parameter)
 
                 if (light != last_light)
                 {
-                    write_light(_this->config.light, light);
+                    if (light == true)
+                    {
+                        if (_this->config.lumi.is_configured())
+                        {
+                            light_luminance_mask = luminance_percent < _this->config.lumi.threshold;
+                        }
+                        else
+                        {
+                            light_luminance_mask = true;   
+                        }
+                    }
+                    else
+                    {
+                        light_luminance_mask = true;   
+                    }
+
+                    write_light(_this->config.light, light && light_luminance_mask);
                 }
 
                 if (fan != last_fan)
@@ -1192,6 +1303,8 @@ void ShowerGuardHandler::task(void *parameter)
             status_copy.temp = temp;
             status_copy.rh = rh;
             status_copy.motion = motion_hys;
+            status_copy.luminance_percent = luminance_percent;
+            status_copy.light_luminance_mask = light_luminance_mask;
             status_copy.light = light;
             status_copy.fan = fan;
             status_copy.light_decision = _this->algo.get_last_light_decision();
@@ -1206,8 +1319,10 @@ void ShowerGuardHandler::task(void *parameter)
 
             //TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
 
-            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}",
-                  temp, rh, (int)motion_hys, (int)light, (int)fan, status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
+            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"luminance_percent\":%f, \"light_luminance_mask\":%d, "
+                  "\"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}",
+                  temp, rh, (int)motion_hys, luminance_percent, (int) light_luminance_mask, (int)light, (int)fan, 
+                  status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
 
             _this->algo.debug_last_light_decision();
             _this->algo.debug_last_fan_decision();
@@ -1221,6 +1336,8 @@ void ShowerGuardHandler::task(void *parameter)
         delay(1000);
     }
 
+    _this->_is_finished = true;
+
     TRACE("shower_guard_task: terminated")
     vTaskDelete(NULL);
 }
@@ -1230,6 +1347,7 @@ void ShowerGuardHandler::configure_hw()
     configure_hw_rh(config.rh);
     configure_hw_temp();
     configure_hw_motion(config.motion);
+    configure_hw_lumi(config.lumi);
     configure_hw_light(config.light);
     configure_hw_fan(config.fan);
 }
@@ -1263,6 +1381,21 @@ void ShowerGuardHandler::configure_hw_motion(const ShowerGuardConfig::Motion &mo
 
     TRACE("configure motion: gpio=%d, inverted=%d", (int)motion.channel.gpio, (int)motion.channel.inverted)
     gpioHandler.setupChannel(motion.channel.gpio, INPUT_PULLUP, motion.channel.inverted, NULL);
+}
+
+void ShowerGuardHandler::configure_hw_lumi(const ShowerGuardConfig::Lumi &lumi)
+{
+    // configure lumi
+
+    if (lumi.is_configured())
+    {
+        TRACE("configure lumi.ldr: gpio=%d, atten=%d", (int)lumi.ldr.gpio, (int)lumi.ldr.atten)        
+        analogSetPinAttenuation(lumi.ldr.gpio, (adc_attenuation_t)lumi.ldr.atten);
+    }
+    else
+    {
+        TRACE("skip configuring lumi: not defined / not installed")        
+    }
 }
 
 void ShowerGuardHandler::configure_hw_light(const ShowerGuardConfig::Light &light)
@@ -1370,7 +1503,7 @@ bool ShowerGuardHandler::read_temp(float &temp)
 
     ds18b20.requestTemperatures();
 
-    TRACE("DS18b20 device count %d", (int)device_count)
+    //DEBUG("DS18b20 device count %d", (int)device_count)
 
     float r_temp = 0;
     bool r = false;
@@ -1386,7 +1519,7 @@ bool ShowerGuardHandler::read_temp(float &temp)
             sprintf(addr_str, "%02x-%02x%02x%02x%02x%02x%02x", (int)addr[0], (int)addr[6], (int)addr[5], (int)addr[4], (int)addr[3], (int)addr[2], (int)addr[1]);
             float i_temp = ds18b20.getTempC(addr);
 
-            TRACE("addr=[%s], temp=%f", addr_str, i_temp)
+            // DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
 
             if (!strcmp(addr_str, config.temp.addr.c_str()))
             {
@@ -1398,7 +1531,7 @@ bool ShowerGuardHandler::read_temp(float &temp)
                     r_temp += config.temp.corr;
                 }
 
-                TRACE("this is configured device, r_temp=%f", r_temp)
+                // DEBUG("this is configured device, r_temp=%f", r_temp)
 
                 if ((int)r_temp == -127)
                 {
@@ -1423,12 +1556,26 @@ bool ShowerGuardHandler::read_motion(const ShowerGuardConfig::Motion &motion)
     return GpioChannel::read(motion.channel.gpio, motion.channel.inverted);
 }
 
+float ShowerGuardHandler::read_lumi(const ShowerGuardConfig::Lumi &lumi)
+{
+
+    if (lumi.is_configured())
+    {
+        unsigned ldr_reading = analog_read(lumi.ldr.gpio);
+        // DEBUG("ldr_reading %d", (int) ldr_reading)
+        return float(int((float(ldr_reading) / float(4095))*100));
+    }
+
+    return 0;
+}
+
 void ShowerGuardHandler::write_light(const ShowerGuardConfig::Light &light, bool value)
 {
     // avoid using non-static functions of gpiochannel to skip thread synchronisation
 
     bool value_to_write = light.channel.coilon_active ? value : (value ? false : true);
     GpioChannel::write(light.channel.gpio, light.channel.inverted, value_to_write);
+    DEBUG("write_light gpio %d value %d", (int) light.channel.gpio, (int) value_to_write)
 }
 
 void ShowerGuardHandler::write_fan(const ShowerGuardConfig::Fan &fan, bool value)
@@ -1437,6 +1584,7 @@ void ShowerGuardHandler::write_fan(const ShowerGuardConfig::Fan &fan, bool value
 
     bool value_to_write = fan.channel.coilon_active ? value : (value ? false : true);
     GpioChannel::write(fan.channel.gpio, fan.channel.inverted, value_to_write);
+    DEBUG("write_fan gpio %d value %d", (int) fan.channel.gpio, (int) value_to_write)
 }
 
 void start_shower_guard_task(const ShowerGuardConfig &config)

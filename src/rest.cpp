@@ -217,6 +217,14 @@ String restActionAutonomKeyboxActuate(const String & channel_str)
   return actionAutonomKeyboxActuate(channel_str);
 }
 
+String restActionAutonomRfidLockProgram(const String & code_str)
+{
+  TRACE("REST action autonom rfid-lock program")
+  DEBUG("code %s", code_str.c_str())
+
+  return actionAutonomRfidLockProgram(code_str);
+}
+
 String restGet(const String & resetStamp) 
 {
   TRACE("REST get")

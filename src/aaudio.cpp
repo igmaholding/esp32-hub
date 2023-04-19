@@ -211,48 +211,6 @@ bool AudioConfig::Motion::from_eprom(std::istream &is)
     return is_valid() && !is.bad();
 }
 
-void AudioConfig::Motion::Channel::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("gpio"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
-        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-    if (json.containsKey("inverted"))
-    {
-        inverted = json["inverted"];
-    }
-    if (json.containsKey("debounce"))
-    {
-        debounce = (unsigned)((int)json["debounce"]);
-    }
-}
-
-void AudioConfig::Motion::Channel::to_eprom(std::ostream &os) const
-{
-    uint8_t gpio_uint8 = (uint8_t)gpio;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    uint8_t inverted_uint8 = (uint8_t)inverted;
-    os.write((const char *)&inverted_uint8, sizeof(inverted_uint8));
-
-    os.write((const char *)&debounce, sizeof(debounce));
-}
-
-bool AudioConfig::Motion::Channel::from_eprom(std::istream &is)
-{
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    gpio = (gpio_num_t)gpio_int8;
-
-    uint8_t inverted_uint8 = (uint8_t) false;
-    is.read((char *)&inverted_uint8, sizeof(inverted_uint8));
-    inverted = (bool)inverted_uint8;
-
-    is.read((char *)&debounce, sizeof(debounce));
-    return is_valid() && !is.bad();
-}
-
 void AudioConfig::I2s::from_json(const JsonVariant &json)
 {
     if (json.containsKey("dout"))
@@ -516,6 +474,7 @@ class AudioHandler
 public:
 
     static const unsigned MOTION_HYS_MILLIS = 7000;
+    static const unsigned LOG_FOR_STATS_INTERVAL_SECONDS = 30;
 
     AudioHandler()
     {
@@ -702,6 +661,8 @@ void AudioHandler::task(void *parameter)
     bool motion = false;
     bool last_motion = false;
     uint32_t motion_hys_millis = 0;
+    bool should_log_for_stats = true;
+    uint32_t last_log_for_stats_millis = 0;
 
     while (_this->_is_active)
     {
@@ -731,6 +692,7 @@ void AudioHandler::task(void *parameter)
         {
             TRACE("motion_hys %d", (int) motion_hys)
             last_motion_hys = motion_hys;
+            should_log_for_stats = true;
         }
 
         _this->status.motion = motion_hys;
@@ -777,6 +739,7 @@ void AudioHandler::task(void *parameter)
             _this->engine.setVolume(volume);
             TRACE("audio_task: change volume to %d", (int) volume)
             _this->status.volume = volume;
+            should_log_for_stats = true;
         }
         
         if (volume == 0)
@@ -784,7 +747,36 @@ void AudioHandler::task(void *parameter)
             audio_on = false;
         }
 
-        _this->status.is_streaming = audio_on;
+        if (_this->status.is_streaming != audio_on)
+        {
+            _this->status.is_streaming = audio_on;
+            should_log_for_stats = true;
+        }
+
+        if (last_log_for_stats_millis > now_millis || ((now_millis-last_log_for_stats_millis)/1000) >= _this->LOG_FOR_STATS_INTERVAL_SECONDS)
+        {
+            should_log_for_stats = true;
+        }
+
+        if (audio_on == false)
+        {
+            Lock lock(_this->semaphore);
+            _this->status.bitrate = 0;
+            _this->status.title = "";
+        }
+
+        // log for stats if something has changed or every LOG_FOR_STATS_INTERVAL_SECONDS seconds
+
+        if (should_log_for_stats == true)
+        {
+            AudioStatus status_copy;
+
+            { Lock lock(_this->semaphore);
+            status_copy = _this->status; }
+            
+            TRACE("* {\"motion\":%d, \"is_streaming\":%d, \"volume\":%d, \"url_index\":\"%d\", \"bitrate\":\"%d\", , \"title\":\"%s\"}",
+                  (int)motion_hys, (int)audio_on, (int)volume, status_copy.url_index, status_copy.bitrate, status_copy.title.c_str())
+        }
 
         if (wait_retry_audio_millis == 0 || wait_retry_audio_millis+AUDIO_RECONNECT_TIMEOUT <= now_millis || now_millis < wait_retry_audio_millis)
         {
@@ -852,7 +844,7 @@ String AudioHandler::choose_url()
     {
         if (config.service.url_select < config.service.NUM_URLS)
         {
-        index = config.service.url_select;
+            index = config.service.url_select;
         }
     }
     else

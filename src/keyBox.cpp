@@ -486,7 +486,6 @@ void KeyboxHandler::configure_hw_buzzer(const BuzzerConfig & config)
     start_buzzer_task(config);
 }
 
-
 void KeyboxHandler::configure_hw_keypad(const KeypadConfig & config)
 {
     start_keypad_task(config, press_reflex);

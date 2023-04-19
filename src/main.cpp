@@ -21,6 +21,8 @@
 
 WifiHandler wifiHandler;
 
+const int MAX_WIFI_CONNECT_RETRIES = 20;
+
 std::vector<std::pair<String, String>> knownNetworks;
 
 const char* ntpServer = "pool.ntp.org";
@@ -31,8 +33,9 @@ const size_t EEPROM_SIZE = 512;
 
 void connectWifi()
 {
-    led_wifi_search = true;
-    led_wifi_on = false;
+    int wifi_connect_retry_count = 0;
+    onboard_led_wifi_search = true;
+    onboard_led_wifi_on = false;
 
     uint32_t _millis = millis();
 
@@ -46,12 +49,20 @@ void connectWifi()
             delay(WIFI_RETRY_MILLIS - diff_millis);
         }
 
-        TRACE("retrying WIFI connection cycle")
+        TRACE("retrying WIFI connection cycle (%d/%d)", wifi_connect_retry_count, MAX_WIFI_CONNECT_RETRIES)
         _millis = millis();
+
+        wifi_connect_retry_count++;
+
+        if (wifi_connect_retry_count >= MAX_WIFI_CONNECT_RETRIES)
+        {
+            ERROR("Max retries for WIFI connection reached, restarting....")
+            ESP.restart();
+        }
     }
 
-    led_wifi_search = false;
-    led_wifi_on = true;
+    onboard_led_wifi_search = false;
+    onboard_led_wifi_on = true;
 }
 
 void print_ntp_time()
@@ -70,17 +81,12 @@ void print_ntp_time()
 
 void setup()
 {
-    start_onboard_led_task();
-    led_just_started = true;
+    start_led_task();
+    onboard_led_just_started = true;
 
     Serial.begin(9600);
 
     EEPROM.begin(EEPROM_SIZE);
-
-    TRACE("Total heap: %d", ESP.getHeapSize())
-    TRACE("Free heap: %d", ESP.getFreeHeap())
-    TRACE("Total PSRAM: %d", ESP.getPsramSize())
-    TRACE("Free PSRAM: %d", ESP.getFreePsram())
 
     restoreAutonom();
 
@@ -91,7 +97,24 @@ void setup()
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     print_ntp_time();
     wwwSetupRouting();
+    //TRACE("wwwSetupRouting OK")
+    //delay(3000);
     wwwBegin();
+    //TRACE("wwwBegin OK")
+    //delay(3000);
+
+    // the below call somehow interferes with tag reading activities in the PN532 library and
+    // causes core panic crash
+    //TRACE("Total heap: %d", (int) ESP.getHeapSize())
+
+    TRACE("Free heap: %d", (int) ESP.getFreeHeap())
+    TRACE("Total PSRAM: %d", (int) ESP.getPsramSize())
+    TRACE("Free PSRAM: %d", (int) ESP.getFreePsram())
+    
+    TaskHandle_t myTaskHandle = xTaskGetCurrentTaskHandle();
+    auto priority = uxTaskPriorityGet( myTaskHandle );
+    TRACE("main task priority is %d", int(priority))
+    
 
     ArduinoOTA
         .onStart([]()
@@ -130,9 +153,6 @@ void setup()
     ArduinoOTA.begin();
 }
 
-static int wifi_connect_retry_count = 0;
-const int MAX_WIFI_CONNECT_RETRIES = 20;
-
 void loop()
 {
     ArduinoOTA.handle();
@@ -143,20 +163,12 @@ void loop()
     {
         ERROR("Lost WIFI connection, retrying")
         wifiHandler.disconnect();
-        led_wifi_on = false;
+        onboard_led_wifi_on = false;
         connectWifi();
-
-        wifi_connect_retry_count++;
-
-        if (wifi_connect_retry_count >= MAX_WIFI_CONNECT_RETRIES)
-        {
-            ERROR("Max retries for WIFI connection reached, restarting....")
-            ESP.restart();
-        }
     }
     else
     {
-        led_wifi_on = true;
-        wifi_connect_retry_count = 0;
+        onboard_led_wifi_on = true;
     }
 }
+

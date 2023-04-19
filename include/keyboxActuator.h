@@ -1,6 +1,7 @@
 #ifdef INCLUDE_KEYBOX
 
 #include <ArduinoJson.h>
+#include <digitalOutputChannelConfig.h>
 
 #define KEYBOX_NUM_CHANNELS 15  // max 32, limited by KeyBoxStatus; if change also update the Actuator.addr
 
@@ -59,48 +60,10 @@ struct KeyboxActuatorConfig
                         "latch=" + latch.as_string() + ", power=" + power.as_string() + ", status=" + status.as_string() + "}";
     }
 
-    struct Channel
-    {
-        Channel()
-        {
-            clear();
-        }
-    
-        void clear()
-        {
-            gpio = gpio_num_t(-1);
-            inverted = false;
-        }
-
-        void from_json(const JsonVariant & json);
-
-        void to_eprom(std::ostream & os) const;
-        bool from_eprom(std::istream & is);
-
-        bool is_valid() const 
-        {
-            return gpio != gpio_num_t(-1);
-        }
-
-        bool operator == (const Channel & channel) const
-        {
-            return gpio == channel.gpio && inverted == channel.inverted;
-        }
-
-        String as_string() const
-        {
-            return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + "}";
-        }
-
-        gpio_num_t gpio;
-        bool inverted;
-        
-    };
-    
-    Channel addr[4];            
-    Channel latch;            
-    Channel power;            
-    Channel status;            
+    DigitalOutputChannelConfig addr[4];            
+    DigitalOutputChannelConfig latch;            
+    DigitalOutputChannelConfig power;            
+    DigitalOutputChannelConfig status;            
 
 };
 
