@@ -5,6 +5,7 @@
 #include <keypad.h>
 #include <keyboxActuator.h>
 #include <digitalInputChannelConfig.h>
+#include <genericChannelConfig.h>
 
 class AudioConfig
 {
@@ -125,41 +126,10 @@ class AudioConfig
             {
                 return String("{dout=") + dout.as_string() + ", bclk=" + bclk.as_string() + ", lrc=" + lrc.as_string() + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio))+ "}";
-                }
-
-                gpio_num_t gpio;
-                
-            };
-            
-            Channel dout;            
-            Channel bclk;            
-            Channel lrc;            
+            GenericChannelConfig dout;            
+            GenericChannelConfig bclk;            
+            GenericChannelConfig lrc;            
 
         };
 

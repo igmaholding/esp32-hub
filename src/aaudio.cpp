@@ -262,31 +262,6 @@ bool AudioConfig::I2s::from_eprom(std::istream &is)
     return is_valid() && !is.bad();
 }
 
-void AudioConfig::I2s::Channel::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("gpio"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
-        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-}
-
-void AudioConfig::I2s::Channel::to_eprom(std::ostream &os) const
-{
-    uint8_t gpio_uint8 = (uint8_t)gpio;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-}
-
-bool AudioConfig::I2s::Channel::from_eprom(std::istream &is)
-{
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    gpio = (gpio_num_t)gpio_int8;
-
-    return is_valid() && !is.bad();
-}
-
-
 void AudioConfig::Service::from_json(const JsonVariant &json)
 {
     if (json.containsKey("url"))

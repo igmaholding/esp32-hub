@@ -389,7 +389,7 @@ void RfidLockConfig::Lock::from_json(const JsonVariant &json)
             while(iterator != jsonArray.end())
             {
                 const JsonVariant & __json = *iterator;
-                Channel channel;
+                RelayChannelConfig channel;
                 channel.from_json(__json);
                 channels.push_back(channel);
 
@@ -424,58 +424,12 @@ bool RfidLockConfig::Lock::from_eprom(std::istream &is)
 
     for (size_t i=0; i<count; ++i)
     {
-        Channel channel;
+        RelayChannelConfig channel;
         channel.from_eprom(is);
         channels.push_back(channel);
     }
 
     is.read((char *)&linger, sizeof(linger));
-
-    return is_valid() && !is.bad();
-}
-
-void RfidLockConfig::Lock::Channel::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("gpio"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["gpio"]);
-        gpio = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-    if (json.containsKey("inverted"))
-    {
-        inverted = json["inverted"];
-    }
-    if (json.containsKey("coilon_active"))
-    {
-        coilon_active = json["coilon_active"];
-    }
-}
-
-void RfidLockConfig::Lock::Channel::to_eprom(std::ostream &os) const
-{
-    uint8_t gpio_uint8 = (uint8_t)gpio;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    uint8_t inverted_uint8 = (uint8_t)inverted;
-    os.write((const char *)&inverted_uint8, sizeof(inverted_uint8));
-
-    uint8_t coilon_active_uint8 = (uint8_t)coilon_active;
-    os.write((const char *)&coilon_active_uint8, sizeof(coilon_active_uint8));
-}
-
-bool RfidLockConfig::Lock::Channel::from_eprom(std::istream &is)
-{
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    gpio = (gpio_num_t)gpio_int8;
-
-    uint8_t inverted_uint8 = (uint8_t) false;
-    is.read((char *)&inverted_uint8, sizeof(inverted_uint8));
-    inverted = (bool)inverted_uint8;
-
-    uint8_t coilon_active_uint8 = (uint8_t) true;
-    is.read((char *)&coilon_active_uint8, sizeof(coilon_active_uint8));
-    coilon_active = (bool)coilon_active_uint8;
 
     return is_valid() && !is.bad();
 }

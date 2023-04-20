@@ -10,11 +10,12 @@
  *
  *
  */
+#ifndef AUDIO_NO_FLAC_CODEC
+
 #include "flac_decoder.h"
 #include "vector"
 using namespace std;
 
-#ifndef AUDIO_NO_FLAC_CODEC
 
 FLACFrameHeader_t   *FLACFrameHeader;
 FLACMetadataBlock_t *FLACMetadataBlock;

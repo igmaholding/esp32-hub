@@ -9,6 +9,7 @@
 #include <PN532.h>
 #include <NfcAdapter.h>
 #include <vector>
+#include <relayChannelConfig.h>
 
 class RfidLockConfig
 {
@@ -263,43 +264,8 @@ class RfidLockConfig
                 return r;
             }
 
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                    coilon_active = true;
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted && coilon_active == channel.coilon_active;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + 
-                           ",coilon_active=" + String(coilon_active ? "true" : "false") + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                bool coilon_active;
-                
-            };
-            
-            std::vector<Channel> channels;            
+            std::vector<RelayChannelConfig> channels;            
             uint16_t linger;
         };
         

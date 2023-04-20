@@ -2,6 +2,9 @@
 
 #include <ArduinoJson.h>
 #include <digitalInputChannelConfig.h>
+#include <analogInputChannelConfig.h>
+#include <relayChannelConfig.h>
+#include <genericChannelConfig.h>
 
 class ShowerGuardConfig
 {
@@ -104,42 +107,9 @@ class ShowerGuardConfig
             {
                 return String("{vad=") + vad.as_string() + ", vdd=" + vdd.as_string() + ", corr=" + corr + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    atten = 0;
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && atten == channel.atten;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", atten=" + String(atten) + "}";
-                }
-
-                gpio_num_t gpio;
-                uint8_t atten;
-                
-            };
-            
-            Channel vad;
-            Channel vdd;
+            AnalogInputChannelConfig vad;
+            AnalogInputChannelConfig vdd;
             float corr;
             
         };
@@ -173,39 +143,8 @@ class ShowerGuardConfig
             {
                 return String("{channel=") + channel.as_string() + ", addr=\"" + addr + "\", corr=" + corr + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio))+ "}";
-                }
-
-                gpio_num_t gpio;
-                
-            };
-            
-            Channel channel;            
+            GenericChannelConfig channel;            
             String addr;
             float corr;
 
@@ -251,46 +190,8 @@ class ShowerGuardConfig
             {
                 return String("{ldr=") + ldr.as_string() + ", corr=" + corr + ", threshold=" + threshold + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                   clear();
-                }
             
-                void clear()
-                {
-                    gpio = gpio_num_t(-1);
-                    atten = 0;
-                }
-
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && atten == channel.atten;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", atten=" + String(atten) + "}";
-                }
-
-                gpio_num_t gpio;
-                uint8_t atten;
-                
-            };
-            
-            Channel ldr;
+            AnalogInputChannelConfig ldr;
             float corr;
             float threshold;            
         };
@@ -362,44 +263,8 @@ class ShowerGuardConfig
             {
                 return String("{channel=") + channel.as_string() + ", mode=" + mode_2_str(mode)  + ", linger=" + String(linger) + "}";
             }
-
-            struct Channel
-            {
-                Channel()
-                {
-                    gpio = gpio_num_t(-1);
-                    inverted = false;
-                    coilon_active = true;
-                }
             
-                void from_json(const JsonVariant & json);
-
-                void to_eprom(std::ostream & os) const;
-                bool from_eprom(std::istream & is);
-
-                bool is_valid() const 
-                {
-                    return gpio != gpio_num_t(-1);
-                }
-
-                bool operator == (const Channel & channel) const
-                {
-                    return gpio == channel.gpio && inverted == channel.inverted && coilon_active == channel.coilon_active;
-                }
-
-                String as_string() const
-                {
-                    return String("{gpio=") + String((int)(gpio)) + ", inverted=" + String(inverted ? "true" : "false") + 
-                           ",coilon_active=" + String(coilon_active ? "true" : "false") + "}";
-                }
-
-                gpio_num_t gpio;
-                bool inverted;
-                bool coilon_active;
-                
-            };
-            
-            Channel channel;            
+            RelayChannelConfig channel;            
             Mode mode;
             uint16_t linger;
         };
