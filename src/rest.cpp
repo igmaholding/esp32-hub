@@ -217,12 +217,12 @@ String restActionAutonomKeyboxActuate(const String & channel_str)
   return actionAutonomKeyboxActuate(channel_str);
 }
 
-String restActionAutonomRfidLockProgram(const String & code_str)
+String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeout)
 {
   TRACE("REST action autonom rfid-lock program")
-  DEBUG("code %s", code_str.c_str())
+  DEBUG("code %s, timeout %d", code_str.c_str(), (int) timeout)
 
-  return actionAutonomRfidLockProgram(code_str);
+  return actionAutonomRfidLockProgram(code_str, timeout);
 }
 
 String restGet(const String & resetStamp) 

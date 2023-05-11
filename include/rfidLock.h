@@ -9,7 +9,9 @@
 #include <PN532.h>
 #include <NfcAdapter.h>
 #include <vector>
+#include <map>
 #include <relayChannelConfig.h>
+#include <digitalOutputChannelConfig.h>
 
 class RfidLockConfig
 {
@@ -26,6 +28,8 @@ class RfidLockConfig
             rfid = config.rfid;
             lock = config.lock;
             buzzer = config.buzzer;
+            green_led = config.green_led;
+            red_led = config.red_led;
 
             return *this;
         }
@@ -39,12 +43,14 @@ class RfidLockConfig
 
         bool operator == (const RfidLockConfig & config) const
         {
-            return rfid == config.rfid && lock == config.lock && buzzer == config.buzzer;
+            return rfid == config.rfid && lock == config.lock && buzzer == config.buzzer && 
+                   green_led == config.green_led && red_led == config.red_led;
         }
 
         String as_string() const
         {
-            return String("{rfid=") + rfid.as_string() + ", lock=" + lock.as_string() + ", buzzer=" + buzzer.as_string() + "}";
+            return String("{rfid=") + rfid.as_string() + ", lock=" + lock.as_string() + ", buzzer=" + buzzer.as_string() + 
+                   ", green_led=" + green_led.as_string() + ", red_led=" + red_led.as_string() + "}";
         }
 
         // data
@@ -213,7 +219,7 @@ class RfidLockConfig
             {
                 for (auto it = channels.begin(); it != channels.end(); ++it)
                 {
-                    if (it->is_valid() == false)
+                    if (it->second.is_valid() == false)
                     {
                         return false;
                     }
@@ -248,30 +254,173 @@ class RfidLockConfig
 
             String as_string() const
             {
-                String r = "{channels=["; 
+                String r = "{channels={"; 
                 
                 for (auto it = channels.begin(); it != channels.end(); ++it)
                 {
-                    r += it->as_string();
+                    r += it->first + "=" + it->second.as_string();
 
-                    if (it+1 != channels.end())
+                    auto _it = it;
+                    _it++;
+
+                    if (_it != channels.end())
                     {
                         r += ",";
                     }
                 }
                  
-                r += "], linger=" + String(linger) + "}";
+                r += "}, linger=" + String(linger) + "}";
                 return r;
             }
 
             
-            std::vector<RelayChannelConfig> channels;            
+            std::map<String, RelayChannelConfig> channels;            
             uint16_t linger;
         };
         
         Lock lock;
 
+        struct Codes
+        {
+            Codes()
+            {
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                for (auto it=codes.begin(); it!= codes.end(); ++it)
+                {
+                    if (it->second.is_valid() == false)
+                        return false;
+                }
+
+                return true;
+            }
+
+            bool operator == (const Codes & other) const
+            {
+                if (codes.size() != other.codes.size())
+                {
+                    return false;
+                }
+                
+                for (auto it=codes.begin(); it!= codes.end(); ++it)
+                {
+                    auto other_it = other.codes.find(it->first);
+
+                    if (other_it == other.codes.end())
+                    {
+                        return false;
+                    }
+                 
+                    if (!(it->second == other_it->second))
+                    {
+                        return false;
+                    }
+                }
+                return true; 
+            }
+
+            String as_string() const
+            {
+                String r = "{codes={";
+
+                for (auto it=codes.begin(); it!= codes.end(); ++it)
+                {
+                    r += it->first + ":" + it->second.as_string();
+                    
+                    auto it_next = it;
+                    it_next++;
+
+                    if (it_next != codes.end())
+                    {
+                        r += ", ";
+                    }
+                }
+                r += "}}";
+                return r;
+            }
+
+            struct Code
+            {
+                Code()
+                {
+                }
+            
+                void clear()
+                {
+                    value.clear();
+                    locks.clear();
+                }
+
+                void from_json(const JsonVariant & json);
+
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
+                bool is_valid() const 
+                {
+                    return !value.isEmpty();
+                }
+
+                bool operator == (const Code & code) const
+                {
+                    if (value != code.value)
+                    {
+                        return false;
+                    }
+
+                    if (locks.size() != code.locks.size())
+                    {
+                        return false;
+                    }
+
+                    for (auto it=locks.begin(); it!=locks.end(); ++it)
+                    {
+                        if (std::find(code.locks.begin(), code.locks.end(), *it) == code.locks.end())
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                String as_string() const
+                {
+                    String r = "{value:" + value + ", locks=[";
+
+                    for (auto it=locks.begin(); it!= locks.end(); ++it)
+                    {
+                        r += *it;
+                        
+                        if (it+1 != locks.end())
+                        {
+                            r += ", ";
+                        }
+                    }
+                    r += "]}";
+                    return r;
+                }
+
+                String value;
+                std::vector<String> locks;   // locks empty means all              
+            };
+
+            std::map<String, Code> codes;
+        };
+
+        Codes codes;
+
         BuzzerConfig buzzer;
+
+        DigitalOutputChannelConfig green_led;
+        DigitalOutputChannelConfig red_led;
 };
 
 
@@ -319,7 +468,7 @@ void start_rfid_lock_task(const RfidLockConfig &);
 void stop_rfid_lock_task();
 RfidLockStatus get_rfid_lock_status();
 
-String rfid_lock_program(const String & code_str);
+String rfid_lock_program(const String & code_str, uint16_t timeout);
 
 void reconfigure_rfid_lock(const RfidLockConfig &);
 

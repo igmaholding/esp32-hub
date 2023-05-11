@@ -81,7 +81,7 @@ class AutonomTaskManager
         void stopRfidLock();
         void reconfigureRfidLock(const RfidLockConfig &);
         
-        String rfidLockProgram(const String & code_str);
+        String rfidLockProgram(const String & code_str, uint16_t timeout);
         
         RfidLockStatus getRfidLockStatus() const;
 
@@ -218,9 +218,9 @@ void AutonomTaskManager::reconfigureRfidLock(const RfidLockConfig & config)
     reconfigure_rfid_lock(config);
 }
 
-String AutonomTaskManager::rfidLockProgram(const String & code_str)
+String AutonomTaskManager::rfidLockProgram(const String & code_str, uint16_t timeout)
 {
-    return rfid_lock_program(code_str);
+    return rfid_lock_program(code_str, timeout);
 }
 
 RfidLockStatus AutonomTaskManager::getRfidLockStatus() const
@@ -694,12 +694,12 @@ String actionAutonomKeyboxActuate(const String & channel_str)
     #endif // INCLUDE_KEYBOX
 }
 
-String actionAutonomRfidLockProgram(const String & code_str)
+String actionAutonomRfidLockProgram(const String & code_str, uint16_t timeout)
 {
     #ifdef INCLUDE_RFIDLOCK
     if (autonomTaskManager.isRfidLockActive())
     {
-        return autonomTaskManager.rfidLockProgram(code_str);
+        return autonomTaskManager.rfidLockProgram(code_str, timeout);
     }
     else
     {

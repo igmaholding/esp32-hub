@@ -175,11 +175,13 @@ RESPONSE:
     "function":"rfid-lock", 
     "config":{
                 "rfid":{"protocol":"SPI", "hw":"RC522", "resetPowerDownPin":13, "chipSelectPin":5, "sclPin":22, "sdaPin":21, "i2cAddress":40},
-                "lock":{"channels":[{"gpio":12, "inverted":0, "coilon_active":1}], "linger":3},
-                "buzzer":{"channel":{"gpio":27, "inverted":false}}
-
+                "lock":{"channels":{"main":{"gpio":32, "inverted":0, "coilon_active":1}}, "linger":3},
+                "buzzer":{"channel":{"gpio":27, "inverted":false}},
+                "green_led":{"gpio":14, "inverted":false},
+                "red_led":{"gpio":12, "inverted":false}
     }
 }]
+
 
 REST POST cleanup
 URL: <base>/cleanup
@@ -227,14 +229,14 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/program?code=47HuF9CemtholcVCz9A6
+URL: <base>/action/autonom/rfid-lock/program?code=47HuF9CemtholcVCz9A6&timeout=10
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/add?name=igma,code=47HuF9CemtholcVCz9A6,access=255
+URL: <base>/action/autonom/rfid-lock/add?name=igma&code=47HuF9CemtholcVCz9A6&locks=*
 BODY: none
 RESPONSE: 
 {
@@ -242,6 +244,20 @@ RESPONSE:
 
 REST POST action
 URL: <base>/action/autonom/rfid-lock/remove?name=igma
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/remove_all
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/unlock?lock_channels=*
 BODY: none
 RESPONSE: 
 {
@@ -500,12 +516,32 @@ void on_action_autonom_keybox_actuate()
 void on_action_autonom_rfid_lock_program()
 {
     String code_str;
+    String timeout_str;
+
+    bool argument_ok = true;
     String r;    
 
     if (webServer.hasArg("code") == true)
     {
         code_str = webServer.arg("code");        
-        r = restActionAutonomRfidLockProgram(code_str);
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (webServer.hasArg("timeout") == true)
+    {
+        timeout_str = webServer.arg("timeout");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (argument_ok == true)
+    {
+        r = restActionAutonomRfidLockProgram(code_str, (uint16_t) timeout_str.toInt());
     }
     else
     {

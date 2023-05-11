@@ -6,6 +6,17 @@
 #include <gpio.h>
 #include <trace.h>
 #include <binarySemaphore.h>
+#include <onboardLed.h>
+
+const uint16_t DEFAULT_PROGRAM_TIMEOUT = 10;
+
+static const MFRC522::MIFARE_Key DEFAULT_MIFARE_KEY = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+static const MFRC522::MIFARE_Key ZERO_MIFARE_KEY = {0, 0, 0, 0, 0, 0};
+
+static const MFRC522::MIFARE_Key ACTIVE_MIFARE_KEY_A = {0x7e, 0xdc, 0x93, 0x65, 0xc0, 0xdd};
+static const MFRC522::MIFARE_Key ACTIVE_MIFARE_KEY_B = {0x53, 0x31, 0x2e, 0x21, 0x57, 0x0c};
+
+const uint8_t ACTIVE_MIFARE_SECTOR = 1;
 
 struct MIFARE_Classic_1K_Sector
 {
@@ -13,7 +24,7 @@ struct MIFARE_Classic_1K_Sector
     {
         uint8_t bytes[16];
         
-        void dump_debug()
+        void dump_debug() const
         {
             TRACE("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x ",
                   (int) bytes[0], (int) bytes[1], (int) bytes[2], (int) bytes[3], 
@@ -30,7 +41,7 @@ struct MIFARE_Classic_1K_Sector
         memset(this, 0, sizeof(*this));
     }
 
-    void dump_debug()
+    void dump_debug() const
     {
         blocks[0].dump_debug();
         blocks[1].dump_debug();
@@ -73,6 +84,20 @@ String key_2_str(const MFRC522::MIFARE_Key & key)
             (int) key.keyByte[3], (int) key.keyByte[4], (int) key.keyByte[5]);
     
     return String(buf);         
+}
+
+String mifare_key_type_2_str(uint8_t key_type)
+{
+    const char * str = "";
+
+    switch(key_type)
+    {
+        case MFRC522::PICC_CMD_MF_AUTH_KEY_A:  str = "key A"; break;
+        case MFRC522::PICC_CMD_MF_AUTH_KEY_B:  str = "key B"; break;
+        default:  str = "unknown"; break;
+    }
+
+    return String(str);
 }
 
 void i2c_scan(TwoWire & _wire)
@@ -123,7 +148,7 @@ static void _err_val(const char *name, int value)
 
 bool RfidLockConfig::is_valid() const
 {
-    bool r = rfid.is_valid() && lock.is_valid() && buzzer.is_valid();
+    bool r = rfid.is_valid() && lock.is_valid() && buzzer.is_valid() && green_led.is_valid() && red_led.is_valid();
 
     if (r == false)
     {
@@ -202,17 +227,17 @@ bool RfidLockConfig::is_valid() const
 
     for (auto it = lock.channels.begin(); it != lock.channels.end(); ++it, ++i)
     {    
-        String _object_name = String("lock.channel[") + String(i) + "].gpio";
+        String _object_name = String("lock.channel[") + it->first + "].gpio";
 
-        if (checkpad.get_usage(it->gpio) != GpioCheckpad::uNone)
+        if (checkpad.get_usage(it->second.gpio) != GpioCheckpad::uNone)
         {
-            _err_dup(_object_name.c_str(), (int)it->gpio);
+            _err_dup(_object_name.c_str(), (int)it->second.gpio);
             return false;
         }
 
-        if (!checkpad.set_usage(it->gpio, GpioCheckpad::uDigitalOutput))
+        if (!checkpad.set_usage(it->second.gpio, GpioCheckpad::uDigitalOutput))
         {
-            _err_cap(_object_name.c_str(), (int)it->gpio);
+            _err_cap(_object_name.c_str(), (int)it->second.gpio);
             return false;
         }
     }
@@ -228,6 +253,34 @@ bool RfidLockConfig::is_valid() const
     if (!checkpad.set_usage(buzzer.channel.gpio, GpioCheckpad::uDigitalOutput))
     {
         _err_cap(object_name, (int)buzzer.channel.gpio);
+        return false;
+    }
+
+    object_name = "green_led.gpio";
+
+    if (checkpad.get_usage(green_led.gpio) != GpioCheckpad::uNone)
+    {
+        _err_dup(object_name, (int)green_led.gpio);
+        return false;
+    }
+
+    if (!checkpad.set_usage(green_led.gpio, GpioCheckpad::uDigitalOutput))
+    {
+        _err_cap(object_name, (int)green_led.gpio);
+        return false;
+    }
+
+    object_name = "red_led.gpio";
+
+    if (checkpad.get_usage(red_led.gpio) != GpioCheckpad::uNone)
+    {
+        _err_dup(object_name, (int)red_led.gpio);
+        return false;
+    }
+
+    if (!checkpad.set_usage(red_led.gpio, GpioCheckpad::uDigitalOutput))
+    {
+        _err_cap(object_name, (int)red_led.gpio);
         return false;
     }
 
@@ -253,6 +306,18 @@ void RfidLockConfig::from_json(const JsonVariant &json)
         const JsonVariant &_json = json["buzzer"];
         buzzer.from_json(_json);
     }
+
+    if (json.containsKey("green_led"))
+    {
+        const JsonVariant &_json = json["green_led"];
+        green_led.from_json(_json);
+    }
+
+    if (json.containsKey("red_led"))
+    {
+        const JsonVariant &_json = json["red_led"];
+        red_led.from_json(_json);
+    }
 }
 
 void RfidLockConfig::to_eprom(std::ostream &os) const
@@ -261,6 +326,9 @@ void RfidLockConfig::to_eprom(std::ostream &os) const
     rfid.to_eprom(os);
     lock.to_eprom(os);
     buzzer.to_eprom(os);
+    green_led.to_eprom(os);
+    red_led.to_eprom(os);
+    codes.to_eprom(os);
 }
 
 bool RfidLockConfig::from_eprom(std::istream &is)
@@ -274,6 +342,9 @@ bool RfidLockConfig::from_eprom(std::istream &is)
         rfid.from_eprom(is);
         lock.from_eprom(is);
         buzzer.from_eprom(is);
+        green_led.from_eprom(is);
+        red_led.from_eprom(is);
+        codes.from_eprom(is);
         return is_valid() && !is.bad();
     }
     else
@@ -373,28 +444,20 @@ bool RfidLockConfig::Rfid::from_eprom(std::istream &is)
 
 void RfidLockConfig::Lock::from_json(const JsonVariant &json)
 {
-    channels.resize(0);
+    channels.clear();
 
      if (json.containsKey("channels"))
     {
         const JsonVariant &_json = json["channels"];
-
-        if (_json.is<JsonArray>())
+        const JsonObject & _json_object = _json.as<JsonObject>();
+        
+        for(auto iterator = _json_object.begin(); iterator != _json_object.end(); ++iterator) 
         {
-            size_t i=0;
-            
-            const JsonArray & jsonArray = _json.as<JsonArray>();
-            auto iterator = jsonArray.begin();
+            const JsonVariant & __json = iterator->value().as<JsonVariant>();
+            RelayChannelConfig channel;
+            channel.from_json(__json);
 
-            while(iterator != jsonArray.end())
-            {
-                const JsonVariant & __json = *iterator;
-                RelayChannelConfig channel;
-                channel.from_json(__json);
-                channels.push_back(channel);
-
-                ++iterator;
-            }
+            channels.insert(std::make_pair(String(iterator->key().c_str()), channel));
         }
     }
 
@@ -411,7 +474,11 @@ void RfidLockConfig::Lock::to_eprom(std::ostream &os) const
 
     for (auto it = channels.begin(); it != channels.end(); ++it)
     {
-        it->to_eprom(os);
+        uint8_t len = (uint8_t) it->first.length();
+        os.write((const char *)&len, sizeof(len));
+        os.write((const char *)it->first.c_str(), len);
+
+        it->second.to_eprom(os);
     }
 
     os.write((const char *)&linger, sizeof(linger));
@@ -419,18 +486,114 @@ void RfidLockConfig::Lock::to_eprom(std::ostream &os) const
 
 bool RfidLockConfig::Lock::from_eprom(std::istream &is)
 {
+    channels.clear();
+
     uint8_t count = 0;
     is.read((char *)&count, sizeof(count));
 
     for (size_t i=0; i<count; ++i)
     {
+        char buf[256];
+        uint8_t len = 0;
+        is.read((char *)&len, sizeof(len));
+        is.read((char *)buf, len);
+        buf[len]=0;
+
         RelayChannelConfig channel;
         channel.from_eprom(is);
-        channels.push_back(channel);
+
+        channels.insert(std::make_pair(String(buf), channel));
     }
 
     is.read((char *)&linger, sizeof(linger));
 
+    return is_valid() && !is.bad();
+}
+
+void RfidLockConfig::Codes::from_json(const JsonVariant &json)
+{
+    if (json.containsKey("codes"))
+    {
+        const JsonVariant &_json = json["codes"];
+
+        if (_json.is<JsonArray>())
+        {
+            size_t i=0;
+
+            for (; i<sizeof(code)/sizeof(code[0]); ++i)
+            {
+                code[i].clear();
+            }
+            
+            const JsonArray & jsonArray = _json.as<JsonArray>();
+            auto iterator = jsonArray.begin();
+            i=0;
+
+            while(iterator != jsonArray.end() && i<sizeof(code)/sizeof(code[0]))
+            {
+                const JsonVariant & __json = *iterator;
+                code[i].from_json(__json);
+
+                ++iterator;
+                ++i;
+            }
+        }
+    }
+}
+
+void RfidLockConfig::Codes::to_eprom(std::ostream &os) const
+{
+    for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
+    {
+        code[i].to_eprom(os);
+    }
+}
+
+bool RfidLockConfig::Codes::from_eprom(std::istream &is)
+{
+    for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
+    {
+        code[i].from_eprom(is);
+    }
+    return is_valid() && !is.bad();
+}
+
+void RfidLockConfig::Codes::Code::from_json(const JsonVariant &json)
+{
+    if (json.containsKey("value"))
+    {
+        value = (const char *)json["value"];
+    }
+}
+
+void RfidLockConfig::Codes::Code::to_eprom(std::ostream &os) const
+{
+    uint8_t len = value.length();
+    os.write((const char *)&len, sizeof(len));
+
+    if (len)
+    {
+        os.write(value.c_str(), len);
+    }
+}
+
+bool RfidLockConfig::Codes::Code::from_eprom(std::istream &is)
+{
+    uint8_t len = 0;
+
+    is.read((char *)&len, sizeof(len));
+
+    if (len)
+    {
+        char buf[256];
+        is.read(buf, len);
+        buf[len] = 0;
+        value = buf;
+    }
+    else
+    {
+        value = "";
+    }
     return is_valid() && !is.bad();
 }
 
@@ -446,6 +609,11 @@ public:
         rc522 = NULL;
         pn532_i2c = NULL;
         nfc_adapter = NULL;
+        red_led_state = ledOff;
+        green_led_state = ledOff;
+        _is_unlocking = false;
+        _is_programming = false;
+        program_timeout = DEFAULT_PROGRAM_TIMEOUT;
     }
 
     ~RfidLockHandler()
@@ -458,6 +626,7 @@ public:
     void start(const RfidLockConfig &config);
     void stop();
     void reconfigure(const RfidLockConfig &config);
+    String program(const String & code, uint16_t timeout);
 
     RfidLockStatus get_status()
     {
@@ -496,25 +665,47 @@ protected:
     void configure_hw_rfid(const RfidLockConfig::Rfid &rfid);
     static void configure_hw_lock(const RfidLockConfig::Lock &lock);
     static void configure_hw_buzzer(const BuzzerConfig &);
+    void configure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led);
+    static void unconfigure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led);
 
     static void write_lock(const RfidLockConfig::Lock &lock, bool value);
 
     static void task(void *parameter);
+    static void unlock_task(void *parameter);
+    static void program_task(void *parameter);
 
     bool rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
-                                  MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data);
+                                  MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data, bool wake_up = false);
+
+    bool rc522_check_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
+                                        MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data);
+
+    bool rc522_check_write_mifare_sector(const MFRC522::MIFARE_Key & key, uint8_t sector_index, 
+                                         MFRC522::Uid & uid, const MIFARE_Classic_1K_Sector & sector_data);
 
     bool tag_submitted(const MIFARE_Classic_1K_Sector &);
+    void commence_unlock();
 
     BinarySemaphore semaphore;
     RfidLockConfig config;
     RfidLockStatus status;
+
     bool _is_active;
     bool _is_finished;
 
     MFRC522 * rc522;
     PN532_I2C * pn532_i2c;
     NfcAdapter * nfc_adapter;
+
+    LedState green_led_state;
+    LedState red_led_state;
+
+    bool _is_unlocking;
+    std::vector<String> unlocking_what;
+
+    bool _is_programming;
+    String program_code;
+    uint16_t program_timeout;
 };
 
 static RfidLockHandler handler;
@@ -526,7 +717,7 @@ void RfidLockHandler::start(const RfidLockConfig &_config)
         return; // already running
     }
 
-    while(_is_finished == false)
+    while(_is_finished == false || _is_programming == true || _is_unlocking == true)
     {
         delay(100);
     }
@@ -551,14 +742,16 @@ void RfidLockHandler::stop()
 {
     _is_active = false;
 
-    while(_is_finished == false)
+    while(_is_finished == false || _is_programming == true || _is_unlocking == true)
     {
         delay(100);
     }
 
     stop_buzzer_task();
     clear_rfid();
+    unconfigure_hw_leds(config.green_led, config.red_led);
 }
+
 
 void RfidLockHandler::reconfigure(const RfidLockConfig &_config)
 {
@@ -578,18 +771,19 @@ void RfidLockHandler::reconfigure(const RfidLockConfig &_config)
             configure_hw_lock(_config.lock);
         }
 
+        if (!(config.buzzer == _config.buzzer))
+        {
+            configure_hw_buzzer(_config.buzzer);
+        }
+
+        if (!(config.green_led == _config.green_led && config.red_led == _config.red_led))
+        {
+            unconfigure_hw_leds(config.green_led, config.red_led);
+            configure_hw_leds(_config.green_led, _config.red_led);
+        }
+
         config = _config;
     }
-}
-
-/**
- 		Helper routine to dump a byte array as dec values to Serial.
-*/
-static void printDec(byte *buffer, byte bufferSize) {
- 	for (byte i = 0; i < bufferSize; i++) {
- 			Serial.print(buffer[i] < 0x10 ? " 0" : " ");
- 			Serial.print(buffer[i], DEC);
- 	}
 }
 
 
@@ -621,45 +815,51 @@ void RfidLockHandler::task(void *parameter)
     MFRC522::Uid uid;
     memset(& uid, 0, sizeof(uid));
 
-    size_t sector_index = 1;
+    size_t sector_index = ACTIVE_MIFARE_SECTOR;
+
+    _this->red_led_state = ledOn;
+    _this->green_led_state = ledOff;
 
     while (_this->_is_active)
     {
-        if (_this->rc522)
-        {   
-            MFRC522::MIFARE_Key _key = key;
-
-            bool result = _this->rc522_read_mifare_sector(_key, sector_index, uid, sector_data);
-
-            if (uid.size > 0)  // new tag is submitted
-            {
-                if (result == true)
-                {
-                    TRACE("Successfully read sector %d on tag %s", (int) sector_index, uid_2_str(uid).c_str())
-                    _this->tag_submitted(sector_data);
-                    sector_data.dump_debug();
-                    sector_data.clear();
-                }
-                else
-                {
-                    TRACE("Failed to read sector %d on tag %s", (int) sector_index, uid_2_str(uid).c_str())
-                    buzzer_one_long = true;
-                }
-            }
-            /*
-         	if (_this->rc522->PICC_IsNewCardPresent())
-            {
- 	            if (_this->rc522->PICC_ReadCardSerial())
-                {
-	                _this->rc522->PICC_DumpToSerial(&(_this->rc522->uid));
-                }
-            }
-            */
-        }
-
-        if (_this->nfc_adapter)
+        if (_this->_is_unlocking == false && _this->_is_programming == false)
         {
-            readNFC(*(_this->nfc_adapter));
+            if (_this->rc522)
+            {   
+                MFRC522::MIFARE_Key _key = ACTIVE_MIFARE_KEY_A;
+
+                bool result = _this->rc522_check_read_mifare_sector(_key, sector_index, uid, sector_data);
+
+                if (uid.size > 0)  // new tag is submitted
+                {
+                    if (result == true)
+                    {
+                        TRACE("Successfully read sector %d on tag %s", (int) sector_index, uid_2_str(uid).c_str())
+                        sector_data.dump_debug();
+                        _this->tag_submitted(sector_data);
+                        sector_data.clear();
+                    }
+                    else
+                    {
+                        TRACE("Failed to read sector %d on tag %s", (int) sector_index, uid_2_str(uid).c_str())
+                        buzzer_one_long = true;
+                    }
+                }
+                /*
+                if (_this->rc522->PICC_IsNewCardPresent())
+                {
+                    if (_this->rc522->PICC_ReadCardSerial())
+                    {
+                        _this->rc522->PICC_DumpToSerial(&(_this->rc522->uid));
+                    }
+                }
+                */
+            }
+
+            if (_this->nfc_adapter)
+            {
+                readNFC(*(_this->nfc_adapter));
+            }
         }
 
         delay(10);
@@ -672,8 +872,202 @@ void RfidLockHandler::task(void *parameter)
 }
 
 
-bool RfidLockHandler::rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
-                                               MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data)
+void RfidLockHandler::unlock_task(void *parameter)
+{
+    RfidLockHandler *_this = (RfidLockHandler *)parameter;
+
+    TRACE("rfid_unlock_task: started")
+
+    _this->red_led_state = ledOff;
+    _this->green_led_state = ledOn;
+
+    uint16_t linger = 1;
+    
+    { Lock lock(_this->semaphore);
+
+    linger = _this->config.lock.linger;
+    for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
+    {
+        digitalWrite(it->second.gpio, it->second.inverted ? 0 : 1);
+    }}
+
+    delay(linger * 1000);
+
+    { Lock lock(_this->semaphore);
+
+    for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
+    {
+        digitalWrite(it->second.gpio, it->second.inverted ? 1 : 0);
+    }}
+
+    _this->red_led_state = ledOn;
+    _this->green_led_state = ledOff;
+
+    { Lock lock(_this->semaphore);
+    _this->_is_unlocking = false; }
+
+    TRACE("rfid_unlock_task: finished")
+    vTaskDelete(NULL);
+}
+
+
+void RfidLockHandler::program_task(void *parameter)
+{
+    RfidLockHandler *_this = (RfidLockHandler *)parameter;
+
+    TRACE("rfid_program_task: started")
+
+    _this->red_led_state = led50Slow;
+    _this->green_led_state = led50SlowInverted;
+
+    MIFARE_Classic_1K_Sector sector_data;
+    memset(& sector_data, 0, sizeof(sector_data));
+
+    // access bytes: KEY A - read, KEY B - read/write
+    static const uint8_t ACCESS_BYTES[4] = {0x08, 0x77, 0x8F, 0x69}; // TRANSPORT: {0xff, 0x07, 0x80, 0x69};
+
+    memcpy(sector_data.blocks[sizeof(sector_data.blocks)/sizeof(sector_data.blocks[0])-1].bytes, ACTIVE_MIFARE_KEY_A.keyByte, sizeof(MFRC522::MIFARE_Key));
+    memcpy(sector_data.blocks[sizeof(sector_data.blocks)/sizeof(sector_data.blocks[0])-1].bytes + 6, ACCESS_BYTES, sizeof(ACCESS_BYTES));
+    memcpy(sector_data.blocks[sizeof(sector_data.blocks)/sizeof(sector_data.blocks[0])-1].bytes + 10, ACTIVE_MIFARE_KEY_B.keyByte, sizeof(MFRC522::MIFARE_Key));
+
+    uint8_t user_data_count = sizeof(sector_data.blocks[0]) * 3 - 1;
+
+    { Lock lock(_this->semaphore);
+    
+    if (_this->program_code.length() < user_data_count)
+    {
+        user_data_count = _this->program_code.length();    
+    }
+
+    uint8_t block_index = 0;
+    uint8_t pos = 0;
+
+    sector_data.blocks[block_index].bytes[pos] = user_data_count;
+    pos++;
+
+    for(size_t i=0; i<user_data_count; ++i)
+    {
+        sector_data.blocks[block_index].bytes[pos] = _this->program_code[i];    
+        pos++;
+
+        if (pos == sizeof(sector_data.blocks[block_index].bytes))
+        {
+            pos = 0;
+            block_index++;
+        }
+    } }
+    
+    TRACE("program_task: prepared sector data to write, waiting for card")
+    sector_data.dump_debug();
+
+    MFRC522::Uid uid;
+    memset(& uid, 0, sizeof(uid));
+
+    uint32_t _millis = millis();
+
+    bool success = false;
+
+    while(true)
+    {
+        bool result = _this->rc522_check_write_mifare_sector(ACTIVE_MIFARE_KEY_B, ACTIVE_MIFARE_SECTOR, uid, sector_data);
+
+                if (uid.size > 0)  // new tag is submitted
+                {
+                    if (result == true)
+                    {
+                        _this->red_led_state = ledOn;
+                        _this->green_led_state = ledOn;  
+
+                        TRACE("program_task: successfully written sector %d on tag %s", (int) ACTIVE_MIFARE_SECTOR, uid_2_str(uid).c_str())
+
+                        MFRC522::MIFARE_Key _key = ACTIVE_MIFARE_KEY_A;
+                        MIFARE_Classic_1K_Sector read_sector_data;
+
+                        result = _this->rc522_read_mifare_sector(_key, ACTIVE_MIFARE_SECTOR, uid, read_sector_data, true);
+
+                        if (result == true)
+                        {
+                            TRACE("program_task: read to verify is ok")
+                            success = true;
+
+                            for (auto i=0; i<3; ++i)
+                            {
+                                if (memcmp(sector_data.blocks[i].bytes, read_sector_data.blocks[i].bytes, sizeof(sector_data.blocks[i].bytes)))
+                                {
+                                    TRACE("program_task: verification failed")
+                                    read_sector_data.dump_debug();
+                                    success = false;
+                                    break;
+                                }
+                            }
+
+                            if (success == true)
+                            {
+                                TRACE("program_task: verification succeded, tag ready to use")
+                            }
+                        }
+                        else
+                        {
+                            TRACE("program_task: failed to read to verify")
+                        }
+                    }
+                    else
+                    {
+                        TRACE("program_task: failed to write sector %d on tag %s", (int) ACTIVE_MIFARE_SECTOR, uid_2_str(uid).c_str())
+                        buzzer_one_long = true;
+                    }
+
+                    if (success == true)
+                    {
+                        _this->red_led_state = ledOff;
+                        _this->green_led_state = led50Fast;  
+                        buzzer_series_short = true; 
+                      
+                    }
+                    else
+                    {
+                        _this->red_led_state = led50Fast;
+                        _this->green_led_state = ledOff;                        
+                        buzzer_one_long = true; 
+                    }
+
+                    delay(2000);
+                    break;
+                }
+
+        delay(10);
+
+        uint32_t new_millis = millis();
+
+        uint32_t diff = 0;
+
+        if (new_millis < _millis)
+        {
+            diff = (0xfffffff - _millis) + new_millis;
+        }
+        else
+        {
+            diff = new_millis - _millis;
+        }
+        if (diff >= _this->program_timeout * 1000)
+        {
+            TRACE("program_task: timeout, no card submitted") 
+            break;
+        }
+    }
+    
+    _this->red_led_state = ledOn;
+    _this->green_led_state = ledOff;
+
+    { Lock lock(_this->semaphore);
+    _this->_is_programming = false; }
+
+    TRACE("rfid_program_task: finished")
+    vTaskDelete(NULL);
+}
+
+bool RfidLockHandler::rc522_check_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
+                                                     MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data)
 {
     // if uid is set upon return but the return value is false then the tag was submitted 
     // but something went wrong (most likely, wrong key)
@@ -681,8 +1075,6 @@ bool RfidLockHandler::rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_
     // note: the key may change upon return, the function could have tried default key if the provided
     // one didn't work
 
-    static const MFRC522::MIFARE_Key  default_key = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    
     bool r = false;
     memset(& uid, 0, sizeof(uid));
 
@@ -692,75 +1084,206 @@ bool RfidLockHandler::rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_
         {
             TRACE("RC522 new card present")
 
+            bool wake_up = false; 
+            r = rc522_read_mifare_sector(key, sector_index, uid, sector_data, wake_up);
+        }
+    }
+
+    return r;
+}
+
+bool RfidLockHandler::rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
+                                               MFRC522::Uid & uid, MIFARE_Classic_1K_Sector & sector_data, bool wake_up)
+{
+    // if uid is set upon return but the return value is false then the tag was submitted 
+    // but something went wrong (most likely, wrong key)
+
+    // note: the key may change upon return, the function could have tried default key if the provided
+    // one didn't work
+
+    bool r = false;
+    memset(& uid, 0, sizeof(uid));
+
+    if (rc522)
+    {
+        size_t block_count = sizeof(MIFARE_Classic_1K_Sector::blocks)/sizeof(MIFARE_Classic_1K_Sector::blocks[0]);
+        size_t block_index = sector_index * block_count;
+
+        std::vector<std::pair<MFRC522::PICC_Command, MFRC522::MIFARE_Key>> keys;
+        
+        keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_A, key));
+
+        keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_A, DEFAULT_MIFARE_KEY));
+        keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_B, DEFAULT_MIFARE_KEY));
+
+        keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_A, ZERO_MIFARE_KEY));
+        keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_B, ZERO_MIFARE_KEY));
+
+        MFRC522::StatusCode status = MFRC522::STATUS_ERROR;
+
+        for (auto it=keys.begin(); it!= keys.end(); ++it)
+        {
+            if (wake_up == true)
+            {
+                byte atqa_answer[2];
+                byte atqa_size = 2;
+                rc522->PICC_WakeupA(atqa_answer, &atqa_size); // we don't care if it fails, the important is select
+            }
+            else
+            {
+                wake_up = true;
+            }
+
             if (rc522->PICC_Select(& uid) == MFRC522::STATUS_OK)
             {
                 TRACE("RC522 PICC select succeded, uid %s", uid_2_str(uid).c_str())
 
-                size_t block_count = sizeof(MIFARE_Classic_1K_Sector::blocks)/sizeof(MIFARE_Classic_1K_Sector::blocks[0]);
-                size_t block_index = sector_index * block_count;
+                MFRC522::MIFARE_Key _key = it->second;
+                MFRC522::PICC_Command _key_type = it->first;
 
-			    MFRC522::StatusCode status = 
-                rc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block_index, & key, & uid);
-
-                // if the key provided is not working - maybe the card is factory default, check the default key
-
-                if (status != MFRC522::STATUS_OK) 
-                {
-                    TRACE("RC522 PCD authenticate with provided key %s failed", key_2_str(key).c_str())
-
-                    // Wake the card up again
-                    byte atqa_answer[2];
-                    byte atqa_size = 2;
-                    
-                    if (rc522->PICC_WakeupA(atqa_answer, &atqa_size) ==  MFRC522::STATUS_OK &&
-                        rc522->PICC_Select(& uid) ==  MFRC522::STATUS_OK)
-                    {
-                        status = 
-                        rc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block_index, (MFRC522::MIFARE_Key*)& default_key, & uid);
-                    }
-
-                    if (status == MFRC522::STATUS_OK) 
-                    {
-                        TRACE("RC522 PCD authenticate with default key %s succeded", key_2_str(default_key).c_str())
-                        key = default_key;
-                    }
-                    else
-                    {
-                        TRACE("RC522 PCD authenticate with default key %s failed too", key_2_str(default_key).c_str())
-                    }
-                }
-                else
-                {
-                    TRACE("RC522 PCD authenticate with provided key %s succeded", key_2_str(key).c_str())
-                }
+                status = rc522->PCD_Authenticate(_key_type, block_index, & _key, & uid);
 
                 if (status == MFRC522::STATUS_OK) 
                 {
-                    r = true;
-
-                    for (size_t i=0; i<block_count; ++i)
-                    {
-                        uint8_t buffer[32];
-                        uint8_t c = sizeof(buffer);
-                        
-		                status = rc522->MIFARE_Read(block_index+i, buffer, & c);
-
-		                if (status != MFRC522::STATUS_OK) 
-                        {
-                            TRACE("RC522 MIFARE read failed with status %d (%s)", (int) status, (const char*)rc522->GetStatusCodeName(status))
-                            r = false;
-                            break;
-                        }
-
-                        memset(sector_data.blocks[i].bytes, 0, sizeof(sector_data.blocks[i].bytes));
-                        c = c > sizeof(sector_data.blocks[i].bytes) ? sizeof(sector_data.blocks[i].bytes) : c;
-                        memcpy(sector_data.blocks[i].bytes, buffer, c);                                                
-                    }
-
-                    rc522->PICC_HaltA();
-                 	rc522->PCD_StopCrypto1();
+                    TRACE("RC522 PCD authenticate with key %s (as %s) succeded", key_2_str(_key).c_str(), 
+                            mifare_key_type_2_str(_key_type).c_str()) 
+                    key = _key;
+                    break;
+                }
+                else
+                {
+                    TRACE("RC522 PCD authenticate with key %s (as %s) failed", key_2_str(_key).c_str(), 
+                            mifare_key_type_2_str(_key_type).c_str()) 
                 }
             }
+        }
+
+        if (status == MFRC522::STATUS_OK) 
+        {
+            r = true;
+
+            for (size_t i=0; i<block_count; ++i)
+            {
+                uint8_t buffer[32];
+                uint8_t c = sizeof(buffer);
+                
+                status = rc522->MIFARE_Read(block_index+i, buffer, & c);
+
+                if (status != MFRC522::STATUS_OK) 
+                {
+                    TRACE("RC522 MIFARE read failed with status %d (%s)", (int) status, (const char*)rc522->GetStatusCodeName(status))
+                    r = false;
+                    break;
+                }
+
+                memset(sector_data.blocks[i].bytes, 0, sizeof(sector_data.blocks[i].bytes));
+                c = c > sizeof(sector_data.blocks[i].bytes) ? sizeof(sector_data.blocks[i].bytes) : c;
+                memcpy(sector_data.blocks[i].bytes, buffer, c);                                                
+            }
+
+            rc522->PICC_HaltA();
+            rc522->PCD_StopCrypto1();
+        }
+    }
+
+    return r;
+}
+
+bool RfidLockHandler::rc522_check_write_mifare_sector(const MFRC522::MIFARE_Key & key, uint8_t sector_index, 
+                                                      MFRC522::Uid & uid, const MIFARE_Classic_1K_Sector & sector_data)
+{
+    // if uid is set upon return but the return value is false then the tag was submitted 
+    // but something went wrong (most likely, wrong key)
+
+    bool r = false;
+    memset(& uid, 0, sizeof(uid));
+
+    if (rc522)
+    {
+        if (rc522->PICC_IsNewCardPresent())
+        {
+            TRACE("RC522 new card present")
+
+            size_t block_count = sizeof(MIFARE_Classic_1K_Sector::blocks)/sizeof(MIFARE_Classic_1K_Sector::blocks[0]);
+            size_t block_index = sector_index * block_count;
+
+            std::vector<std::pair<MFRC522::PICC_Command, MFRC522::MIFARE_Key>> keys;
+            
+            keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_B, key));
+
+            keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_A, DEFAULT_MIFARE_KEY));
+            keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_B, DEFAULT_MIFARE_KEY));
+
+            keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_A, ZERO_MIFARE_KEY));
+            keys.push_back(std::make_pair(MFRC522::PICC_CMD_MF_AUTH_KEY_B, ZERO_MIFARE_KEY));
+
+            MFRC522::StatusCode status = MFRC522::STATUS_ERROR;
+
+            bool wake_up = false;
+
+            for (auto it=keys.begin(); it!= keys.end(); ++it)
+            {
+                if (wake_up == true)
+                {
+                    byte atqa_answer[2];
+                    byte atqa_size = 2;
+                    rc522->PICC_WakeupA(atqa_answer, &atqa_size); // we don't care if it fails, the important is select
+                }
+                else
+                {
+                    wake_up = true;
+                }
+
+                if (rc522->PICC_Select(& uid) == MFRC522::STATUS_OK)
+                {
+                    TRACE("RC522 PICC select succeded, uid %s", uid_2_str(uid).c_str())
+
+                    MFRC522::MIFARE_Key _key = it->second;
+                    MFRC522::PICC_Command _key_type = it->first;
+
+			        status = rc522->PCD_Authenticate(_key_type, block_index, & _key, & uid);
+
+                    if (status == MFRC522::STATUS_OK) 
+                    {
+                        TRACE("RC522 PCD authenticate with key %s (as %s) succeded", key_2_str(_key).c_str(), 
+                              mifare_key_type_2_str(_key_type).c_str()) 
+                        break;
+                    }
+                    else
+                    {
+                        TRACE("RC522 PCD authenticate with key %s (as %s) failed", key_2_str(_key).c_str(), 
+                              mifare_key_type_2_str(_key_type).c_str()) 
+                    }
+                }
+            }
+
+            if (status == MFRC522::STATUS_OK) 
+            {
+                r = true;
+
+                for (size_t i=0; i<block_count; ++i)
+                {
+                    uint8_t buffer[32];
+                    uint8_t c = sizeof(sector_data.blocks[i].bytes);
+                    
+                    memcpy(buffer, sector_data.blocks[i].bytes, c);                                                
+
+                    //DEBUG("writing block %d", (int)  block_index+i)
+                    //sector_data.blocks[i].dump_debug();
+
+                    status = rc522->MIFARE_Write(block_index+i, buffer, c);
+
+                    if (status != MFRC522::STATUS_OK) 
+                    {
+                        TRACE("RC522 MIFARE write failed with status %d (%s)", (int) status, (const char*)rc522->GetStatusCodeName(status))
+                        r = false;
+                        break;
+                    }
+                }
+
+                rc522->PICC_HaltA();
+                rc522->PCD_StopCrypto1();
+            }            
 		}
     }
 
@@ -770,7 +1293,74 @@ bool RfidLockHandler::rc522_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_
 bool RfidLockHandler::tag_submitted(const MIFARE_Classic_1K_Sector & sector_data)
 {
     buzzer_series_short = true; 
+    commence_unlock();
     return true; 
+}
+
+void RfidLockHandler::commence_unlock()
+{
+    Lock lock(semaphore);
+
+    if (_is_programming == true)
+    {
+        TRACE("unlock cancelled due to ongoing programming")
+        return;
+    }
+
+    if (_is_unlocking == false)
+    {
+        _is_unlocking = true;
+
+       xTaskCreate(
+            unlock_task,           // Function that should be called
+            "rfid_unlock_task",    // Name of the task (for debugging)
+            4096,                  // Stack size (bytes)
+            this,                  // Parameter to pass
+            1,                     // Task priority
+            NULL                   // Task handle
+        ); 
+    }
+    else
+    {
+        TRACE("unlock cancelled, already ongoing")
+    }
+}
+
+String RfidLockHandler::program(const String & code, uint16_t timeout)
+{
+    String r;
+    Lock lock(semaphore);
+
+    if (_is_unlocking == true)
+    {
+        r = "programming cancelled due to ongoing unlocking";
+        TRACE(r.c_str())
+        return r;
+    }
+
+    if (_is_programming == false)
+    {
+       _is_programming = true;
+
+        program_code = code;
+        program_timeout = timeout == 0 ? DEFAULT_PROGRAM_TIMEOUT : timeout;
+
+        xTaskCreate(
+            program_task,           // Function that should be called
+            "rfid_program_task",    // Name of the task (for debugging)
+            4096,                  // Stack size (bytes)
+            this,                  // Parameter to pass
+            1,                     // Task priority
+            NULL                   // Task handle
+        ); 
+    }
+    else
+    {
+        r = "programming cancelled, already ongoing";
+        TRACE(r.c_str())
+    }
+
+    return r;
 }
 
 void RfidLockHandler::configure_hw()
@@ -778,11 +1368,24 @@ void RfidLockHandler::configure_hw()
     configure_hw_rfid(config.rfid);
     configure_hw_lock(config.lock);
     configure_hw_buzzer(config.buzzer);
+    configure_hw_leds(config.green_led, config.red_led);
 }
 
 void RfidLockHandler::configure_hw_buzzer(const BuzzerConfig & config)
 {
     start_buzzer_task(config);
+}
+
+void RfidLockHandler::configure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led)
+{
+    register_led(green_led, & green_led_state);
+    register_led(red_led, & red_led_state);
+}
+
+void RfidLockHandler::unconfigure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led)
+{
+    unregister_led(green_led.gpio);
+    unregister_led(red_led.gpio);
 }
 
 void RfidLockHandler::configure_hw_rfid(const RfidLockConfig::Rfid &_config)
@@ -847,6 +1450,11 @@ void RfidLockHandler::configure_hw_rfid(const RfidLockConfig::Rfid &_config)
 
 void RfidLockHandler::configure_hw_lock(const RfidLockConfig::Lock &config)
 {
+    for (auto it=config.channels.begin(); it!=config.channels.end(); ++it)
+    {
+        pinMode(it->second.gpio, OUTPUT);
+        digitalWrite(it->second.gpio, it->second.inverted ? 1 : 0);
+    }
 }
 
 void start_rfid_lock_task(const RfidLockConfig &config)
@@ -877,10 +1485,9 @@ void reconfigure_rfid_lock(const RfidLockConfig &_config)
     handler.reconfigure(_config);
 }
 
-String rfid_lock_program(const String & code_str)
+String rfid_lock_program(const String & code_str, uint16_t timeout)
 {
-    return String();
-    // return "Parameter error";
+    return handler.program(code_str, timeout);
 }
 
 #endif // INCLUDE_RFIDLOCK

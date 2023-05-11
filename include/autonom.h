@@ -7,7 +7,7 @@ void getAutonom(JsonVariant &);
 void restoreAutonom(); // from EPROM
 
 String actionAutonomKeyboxActuate(const String & channel_str);
-String actionAutonomRfidLockProgram(const String & code_str);
+String actionAutonomRfidLockProgram(const String & code_str, uint16_t timeout);
 
 enum FunctionType
 {

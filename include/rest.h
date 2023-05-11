@@ -11,7 +11,7 @@ String restCleanupPm();
 String restCleanupAutonom();
 
 String restActionAutonomKeyboxActuate(const String & channel_str);
-String restActionAutonomRfidLockProgram(const String & code_str);
+String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeout);
 
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);

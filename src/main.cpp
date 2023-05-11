@@ -29,7 +29,7 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3600;
 const int   daylightOffset_sec = 3600+3600;
 
-const size_t EEPROM_SIZE = 512;
+const size_t EEPROM_SIZE = 4096;
 
 void connectWifi()
 {
