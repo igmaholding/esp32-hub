@@ -82,7 +82,11 @@ class AutonomTaskManager
         void reconfigureRfidLock(const RfidLockConfig &);
         
         String rfidLockProgram(const String & code_str, uint16_t timeout);
-        
+
+        String rfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                           const String & type_str, 
+                           RfidLockConfig::Codes & codes_after);
+
         RfidLockStatus getRfidLockStatus() const;
 
         bool isRfidLockActive() const { return rfidLockActive; }
@@ -223,6 +227,39 @@ String AutonomTaskManager::rfidLockProgram(const String & code_str, uint16_t tim
     return rfid_lock_program(code_str, timeout);
 }
 
+String AutonomTaskManager::rfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                       const String & type_str, 
+                                       RfidLockConfig::Codes & codes_after)
+{
+    RfidLockConfig::Codes codes_before;
+    rfid_lock_get_codes(codes_before);
+    String r;
+    //DEBUG("rfid_lock_get_codes %s", codes_before.as_string().c_str())
+    codes_after = codes_before;
+    //DEBUG("copy %s", codes_after.as_string().c_str())
+
+    RfidLockConfig::Codes::Code::Type type = RfidLockConfig::Codes::Code::str_2_type(type_str.c_str());
+
+    if (type == RfidLockConfig::Codes::Code::Type(-1))
+    {
+        r = "Invalid type";
+    }
+    else
+    {
+        RfidLockConfig::Codes::Code code;
+        code.type = type;
+        code.value = code_str;
+        code.locks = locks;
+
+        codes_after.codes[name_str] = code;
+
+        //DEBUG("codes_after %s", codes_after.as_string().c_str())
+        rfid_lock_update_codes(codes_after);
+    }
+
+    return r;
+}
+
 RfidLockStatus AutonomTaskManager::getRfidLockStatus() const
 {
     TRACE("getRfidLockStatus")
@@ -289,6 +326,10 @@ String setupAutonom(const JsonVariant & json)
     TRACE("setupAutonom")
 
     EpromImage epromImage;
+
+    EpromImage currentEpromImage;
+    currentEpromImage.read();
+
     char buf[256];
 
     #ifdef INCLUDE_SHOWERGUARD
@@ -489,6 +530,40 @@ String setupAutonom(const JsonVariant & json)
                         {
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
+                            // we need to preserve codes while reconfiguring, so have to load from the
+                            // currentEpromImage first
+
+                            for (auto it = currentEpromImage.blocks.begin(); it != currentEpromImage.blocks.end(); ++it)
+                            {
+                                const char * function_type_str = function_type_2_str((FunctionType) it->first);
+
+                                if(it->first == ftRfidLock)
+                                {
+                                    std::istringstream is(it->second);
+                                    TRACE("EPROM image, found ftRfidLock block")
+
+                                    RfidLockConfig current_config;
+                                    
+                                    if (current_config.from_eprom(is) == true)
+                                    {
+                                        TRACE("Config is_valid=%s", (current_config.is_valid() ? "true" : "false"))
+                                        TRACE("Config %s", current_config.as_string().c_str())
+
+                                        TRACE("codes %s", current_config.codes.as_string().c_str())
+
+                                        rfidLockConfig.codes = current_config.codes;
+                                    }
+                                    else
+                                    {
+                                        ERROR("Failed to read codes from current config, codes will be lost")
+                                    }
+
+                                    break;
+                                }
+                            }
+
+                            // do not stop saving if current codes retrieval fails - just inform
+
                             std::ostringstream os;
 
                             rfidLockConfig.to_eprom(os);
@@ -534,9 +609,6 @@ String setupAutonom(const JsonVariant & json)
             }
             ++iterator;
         }
-
-        EpromImage currentEpromImage;
-        currentEpromImage.read();
 
         std::vector<uint8_t> added, removed, changed;
 
@@ -713,6 +785,128 @@ String actionAutonomRfidLockProgram(const String & code_str, uint16_t timeout)
     #endif // INCLUDE_RFIDLOCK
 }
 
+#ifdef INCLUDE_RFIDLOCK
+
+static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & codes_after)
+{
+    #ifdef INCLUDE_RFIDLOCK
+
+    TRACE("Updating RfidLock codes")
+
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        EpromImage epromImage;
+        String r;
+
+        if (epromImage.read() == true)
+        {
+            TRACE("EPROM image read success")
+
+            for (auto it = epromImage.blocks.begin(); it != epromImage.blocks.end(); ++it)
+            {
+                const char * function_type_str = function_type_2_str((FunctionType) it->first);
+
+                if(it->first == ftRfidLock)
+                {
+                    std::istringstream is(it->second);
+                    TRACE("EPROM image, found ftRfidLock block")
+
+                    {RfidLockConfig config;
+                    
+                    if (config.from_eprom(is) == true)
+                    {
+                        TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                        TRACE("Config %s", config.as_string().c_str())
+
+                        TRACE("codes_before %s", config.codes.as_string().c_str())
+
+                        if (!(config.codes == codes_after))
+                        {
+                            TRACE("codes_after %s", codes_after.as_string().c_str())
+                            TRACE("EPROM image needs update")
+
+                            config.codes = codes_after;
+
+                            std::ostringstream os;
+                            config.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            epromImage.blocks[(uint8_t) ftRfidLock] = buffer;
+
+                            epromImage.write();
+                        }
+                        else
+                        {
+                            TRACE("codes unchanged, skip updating EPROM")
+                        }
+                    }
+                    else
+                    {
+                        r = "Config read failure";
+                        ERROR(r.c_str())
+                    }}
+
+                    break;
+                }
+            }
+        }
+        else
+        {
+            r = "Failed to read EPROM image";
+            ERROR(r.c_str())
+        }
+        return r;
+    }
+    else
+    {
+        String r = "RfidLock not active";
+        ERROR(r.c_str())
+        return r;
+    }
+
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+#endif
+
+String actionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                const String & type_str)
+{
+    #ifdef INCLUDE_RFIDLOCK
+
+    TRACE("Adding RfidLock code")
+
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        RfidLockConfig::Codes codes_after;
+        
+        String r = autonomTaskManager.rfidLockAdd(name_str, code_str, locks, type_str, codes_after);
+
+        if (r.isEmpty())
+        {
+            r = actionAutonomRfidLockCodesUpdate(codes_after);
+        }
+        return r;
+    }
+    else
+    {
+        String r = "RfidLock not active";
+        ERROR(r.c_str())
+        return r;
+    }
+
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -836,6 +1030,7 @@ void restoreAutonom()
                 {
                     TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
                     TRACE("Config %s", config.as_string().c_str())
+                    TRACE("Codes %s", config.codes.as_string().c_str())
 
                     autonomTaskManager.startRfidLock(config);
                 }

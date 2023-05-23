@@ -236,7 +236,7 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/add?name=igma&code=47HuF9CemtholcVCz9A6&locks=*
+URL: <base>/action/autonom/rfid-lock/add?name=igma&code=47HuF9CemtholcVCz9A6&type=RFID&lock=main&lock=left
 BODY: none
 RESPONSE: 
 {
@@ -561,6 +561,73 @@ void on_action_autonom_rfid_lock_program()
     onboard_led_paired = true;
 }
 
+void on_action_autonom_rfid_lock_add()
+{
+    String name_str;
+    String code_str;
+    String type_str;
+    std::vector<String> locks;
+
+    bool argument_ok = true;
+    String r;    
+
+    if (webServer.hasArg("name") == true)
+    {
+        name_str = webServer.arg("name");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (webServer.hasArg("code") == true)
+    {
+        code_str = webServer.arg("code");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (webServer.hasArg("type") == true)
+    {
+        type_str = webServer.arg("type");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    for (size_t i=0; i<webServer.args(); ++i)
+    {
+        if (webServer.argName(i) == "lock")
+        {
+            locks.push_back(webServer.arg(i));
+        }
+    }
+
+    if (argument_ok == true)
+    {
+        r = restActionAutonomRfidLockAdd(name_str, code_str, locks, type_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
 void on_reset()
 {
     String resetStamp;
@@ -652,6 +719,7 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/keybox/actuate", HTTP_POST, on_action_autonom_keybox_actuate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/program", HTTP_POST, on_action_autonom_rfid_lock_program);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/add", HTTP_POST, on_action_autonom_rfid_lock_add);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);

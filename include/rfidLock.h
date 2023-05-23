@@ -31,6 +31,8 @@ class RfidLockConfig
             green_led = config.green_led;
             red_led = config.red_led;
 
+            // codes intentionally handled manually
+
             return *this;
         }
 
@@ -45,12 +47,16 @@ class RfidLockConfig
         {
             return rfid == config.rfid && lock == config.lock && buzzer == config.buzzer && 
                    green_led == config.green_led && red_led == config.red_led;
+
+            // codes intentionally handled manually
         }
 
         String as_string() const
         {
             return String("{rfid=") + rfid.as_string() + ", lock=" + lock.as_string() + ", buzzer=" + buzzer.as_string() + 
                    ", green_led=" + green_led.as_string() + ", red_led=" + red_led.as_string() + "}";
+
+            // codes intentionally handled manually
         }
 
         // data
@@ -348,14 +354,48 @@ class RfidLockConfig
 
             struct Code
             {
+                enum Type
+                {
+                    tRFID    = 0,
+                    tKeypad  = 1,
+                };
+
+                static const char * type_2_str(Type type) 
+                {
+                    switch(type)
+                    {
+                        case tRFID:  return "RFID";
+                        case tKeypad:  return "keypad";
+                    }
+
+                    return "<unknown>";
+                }
+
+                static Type str_2_type(const char * str) 
+                {
+                    if (!strcmp(str, type_2_str(tRFID)))
+                    {
+                        return tRFID;
+                    }
+
+                    if (!strcmp(str, type_2_str(tKeypad)))
+                    {
+                        return tKeypad;
+                    }
+
+                    return Type(-1);
+                }
+
                 Code()
                 {
+                    clear();
                 }
             
                 void clear()
                 {
                     value.clear();
                     locks.clear();
+                    type = tRFID;
                 }
 
                 void from_json(const JsonVariant & json);
@@ -370,6 +410,11 @@ class RfidLockConfig
 
                 bool operator == (const Code & code) const
                 {
+                    if (type != code.type)
+                    {
+                        return false;
+                    }
+
                     if (value != code.value)
                     {
                         return false;
@@ -404,12 +449,16 @@ class RfidLockConfig
                             r += ", ";
                         }
                     }
-                    r += "]}";
+                    r += "], type=";
+                    r += type_2_str(type);
+                    r += "}";
+                    
                     return r;
                 }
 
                 String value;
-                std::vector<String> locks;   // locks empty means all              
+                std::vector<String> locks;   // locks empty means all    
+                Type type;          
             };
 
             std::map<String, Code> codes;
@@ -469,6 +518,9 @@ void stop_rfid_lock_task();
 RfidLockStatus get_rfid_lock_status();
 
 String rfid_lock_program(const String & code_str, uint16_t timeout);
+
+void rfid_lock_get_codes(RfidLockConfig::Codes & codes);
+void rfid_lock_update_codes(const RfidLockConfig::Codes & codes);
 
 void reconfigure_rfid_lock(const RfidLockConfig &);
 

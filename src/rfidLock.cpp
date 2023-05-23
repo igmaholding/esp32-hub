@@ -511,59 +511,52 @@ bool RfidLockConfig::Lock::from_eprom(std::istream &is)
 }
 
 void RfidLockConfig::Codes::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("codes"))
-    {
-        const JsonVariant &_json = json["codes"];
-
-        if (_json.is<JsonArray>())
-        {
-            size_t i=0;
-
-            for (; i<sizeof(code)/sizeof(code[0]); ++i)
-            {
-                code[i].clear();
-            }
-            
-            const JsonArray & jsonArray = _json.as<JsonArray>();
-            auto iterator = jsonArray.begin();
-            i=0;
-
-            while(iterator != jsonArray.end() && i<sizeof(code)/sizeof(code[0]))
-            {
-                const JsonVariant & __json = *iterator;
-                code[i].from_json(__json);
-
-                ++iterator;
-                ++i;
-            }
-        }
-    }
+{ 
+    // codes are managed via separate URLs
 }
 
 void RfidLockConfig::Codes::to_eprom(std::ostream &os) const
-{
-    for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
+{ 
+    uint8_t count = codes.size();
+    os.write((const char *)&count, sizeof(count));
+
+    for (auto it = codes.begin(); it != codes.end(); ++it)
     {
-        code[i].to_eprom(os);
+        uint8_t len = (uint8_t) it->first.length();
+        os.write((const char *)&len, sizeof(len));
+        os.write((const char *)it->first.c_str(), len);
+
+        it->second.to_eprom(os);
     }
 }
 
 bool RfidLockConfig::Codes::from_eprom(std::istream &is)
-{
-    for (size_t i=0; i<sizeof(code)/sizeof(code[0]); ++i)
+{ 
+    codes.clear();
+
+    uint8_t count = 0;
+    is.read((char *)&count, sizeof(count));
+
+    for (size_t i=0; i<count; ++i)
     {
-        code[i].from_eprom(is);
+        char buf[256];
+        uint8_t len = 0;
+        is.read((char *)&len, sizeof(len));
+        is.read((char *)buf, len);
+        buf[len]=0;
+
+        Code code;
+        code.from_eprom(is);
+
+        codes.insert(std::make_pair(String(buf), code));
     }
+
     return is_valid() && !is.bad();
 }
 
 void RfidLockConfig::Codes::Code::from_json(const JsonVariant &json)
 {
-    if (json.containsKey("value"))
-    {
-        value = (const char *)json["value"];
-    }
+    // codes are managed via separate URLs
 }
 
 void RfidLockConfig::Codes::Code::to_eprom(std::ostream &os) const
@@ -575,17 +568,30 @@ void RfidLockConfig::Codes::Code::to_eprom(std::ostream &os) const
     {
         os.write(value.c_str(), len);
     }
+
+    uint8_t count = locks.size();
+    os.write((const char *)&count, sizeof(count));
+
+    for (auto it = locks.begin(); it != locks.end(); ++it)
+    {
+        uint8_t len = (uint8_t) it->length();
+        os.write((const char *)&len, sizeof(len));
+        os.write((const char *)it->c_str(), len);
+    }
+
+    uint8_t type_uint8_t = (uint8_t) type;
+    os.write((const char *)&type_uint8_t, sizeof(type_uint8_t));
 }
 
 bool RfidLockConfig::Codes::Code::from_eprom(std::istream &is)
 {
     uint8_t len = 0;
+    char buf[256];
 
     is.read((char *)&len, sizeof(len));
 
     if (len)
     {
-        char buf[256];
         is.read(buf, len);
         buf[len] = 0;
         value = buf;
@@ -594,6 +600,23 @@ bool RfidLockConfig::Codes::Code::from_eprom(std::istream &is)
     {
         value = "";
     }
+
+    uint8_t count = 0;
+    is.read((char *)&count, sizeof(count));
+
+    for (size_t i=0; i<count; ++i)
+    {
+        is.read((char *)&len, sizeof(len));
+        is.read((char *)buf, len);
+        buf[len]=0;
+
+        locks.push_back(buf);
+    }
+
+    uint8_t type_uint8_t = 0;
+    is.read((char *)&type_uint8_t, sizeof(type_uint8_t));
+    type = (Type) type_uint8_t;
+
     return is_valid() && !is.bad();
 }
 
@@ -640,6 +663,18 @@ public:
         return _status;
     }
 
+    void get_codes(RfidLockConfig::Codes & codes)
+    {
+        Lock lock(semaphore);
+        codes = config.codes;
+    }
+
+    void update_codes(const RfidLockConfig::Codes & codes)
+    {
+        Lock lock(semaphore);
+        config.codes = codes;        
+    }
+
 protected:
     
     void clear_rfid()
@@ -684,7 +719,7 @@ protected:
                                          MFRC522::Uid & uid, const MIFARE_Classic_1K_Sector & sector_data);
 
     bool tag_submitted(const MIFARE_Classic_1K_Sector &);
-    void commence_unlock();
+    void commence_unlock(const std::vector<String> & locks);
 
     BinarySemaphore semaphore;
     RfidLockConfig config;
@@ -723,6 +758,8 @@ void RfidLockHandler::start(const RfidLockConfig &_config)
     }
 
     config = _config;
+    config.codes = _config.codes;
+
     configure_hw();
 
     _is_active = true;
@@ -783,6 +820,7 @@ void RfidLockHandler::reconfigure(const RfidLockConfig &_config)
         }
 
         config = _config;
+        // do not override codes
     }
 }
 
@@ -874,7 +912,12 @@ void RfidLockHandler::task(void *parameter)
 
 void RfidLockHandler::unlock_task(void *parameter)
 {
-    RfidLockHandler *_this = (RfidLockHandler *)parameter;
+    void ** args = (void**) parameter;
+
+    RfidLockHandler *_this = (RfidLockHandler *)args[0];
+    const std::vector<String> * locks_param = (const std::vector<String> *) args[1];
+
+    //DEBUG("args 0x%x this 0x%x locks_param 0x%x", (uint32_t) &args, (uint32_t) _this, (uint32_t) locks_param)
 
     TRACE("rfid_unlock_task: started")
 
@@ -888,7 +931,12 @@ void RfidLockHandler::unlock_task(void *parameter)
     linger = _this->config.lock.linger;
     for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
     {
-        digitalWrite(it->second.gpio, it->second.inverted ? 0 : 1);
+        if (locks_param->empty() == true || 
+            std::find(locks_param->begin(), locks_param->end(), it->first) != locks_param->end())
+        {
+            TRACE("Unlocking channel %s", it->first.c_str())
+            digitalWrite(it->second.gpio, it->second.inverted ? 0 : 1);
+        }
     }}
 
     delay(linger * 1000);
@@ -1292,12 +1340,74 @@ bool RfidLockHandler::rc522_check_write_mifare_sector(const MFRC522::MIFARE_Key 
 
 bool RfidLockHandler::tag_submitted(const MIFARE_Classic_1K_Sector & sector_data)
 {
-    buzzer_series_short = true; 
-    commence_unlock();
-    return true; 
+    // extract code from sector data
+
+    uint8_t block_index = 0;
+    uint8_t pos = 0;
+
+    uint8_t user_data_count = sector_data.blocks[block_index].bytes[pos];
+    pos++;
+
+    char buf[256];
+    uint8_t buf_pos = 0;
+
+    for(size_t i=0; i<user_data_count; ++i)
+    {
+        buf[buf_pos] = sector_data.blocks[block_index].bytes[pos];
+        buf_pos++;    
+        pos++;
+
+        if (pos == sizeof(sector_data.blocks[block_index].bytes))
+        {
+            pos = 0;
+            block_index++;
+
+            if (block_index >= sizeof(sector_data.blocks)/sizeof(sector_data.blocks[0])-1)
+            {
+                break;
+            }
+        }
+    } 
+    
+    buf[buf_pos] = 0;
+    TRACE("Submitted tag with code %s", buf)
+
+    String code(buf);
+
+    bool found = false;
+    String code_name;
+    std::vector<String> locks;
+
+    { Lock lock(semaphore);
+
+        for (auto it=config.codes.codes.begin(); it!=config.codes.codes.end();++it)
+        {
+            if (it->second.type == RfidLockConfig::Codes::Code::tRFID && it->second.value == code)
+            {
+                found = true;
+                code_name = it->first;
+                locks = it->second.locks;
+                break; 
+            }
+        }
+    }
+
+    if (found == true)
+    {
+        TRACE("Code found, code_name %s", code_name.c_str())
+        buzzer_series_short = true; 
+        commence_unlock(locks);
+        return true; 
+    }
+    else
+    {
+        TRACE("Code not found")
+        buzzer_one_long = true; 
+        return false; 
+    }
 }
 
-void RfidLockHandler::commence_unlock()
+void RfidLockHandler::commence_unlock(const std::vector<String> & locks)
 {
     Lock lock(semaphore);
 
@@ -1307,15 +1417,56 @@ void RfidLockHandler::commence_unlock()
         return;
     }
 
+    static std::vector<String> locks_param;
+
     if (_is_unlocking == false)
     {
         _is_unlocking = true;
 
-       xTaskCreate(
+        locks_param.clear();
+
+        // if incoming list of locks is empty == unlock all locks
+
+        if (locks.empty() == false)
+        {
+            // ... otherwise match against existing channels in config.lock
+
+            for (auto it=locks.begin(); it!=locks.end();++it)
+            {
+                auto channel_it = config.lock.channels.find(*it);
+
+                if (channel_it != config.lock.channels.end())
+                {
+                    locks_param.push_back(*it);                    
+                }
+            }
+
+            if (locks_param.empty() == true)
+            {
+                TRACE("unlock cancelled, no channels match locks list")
+                _is_unlocking = false;
+                return;
+            }
+        }
+        else
+        {
+            if (config.lock.channels.empty() == true)
+            {
+                TRACE("unlock cancelled, no lock channels configured")
+                _is_unlocking = false;
+                return;
+            }
+        }
+
+        static void * args[] = { this, & locks_param };
+
+        //DEBUG("args 0x%x this 0x%x locks_param 0x%x", (uint32_t) args, (uint32_t) this, (uint32_t) &locks_param)
+
+        xTaskCreate(
             unlock_task,           // Function that should be called
             "rfid_unlock_task",    // Name of the task (for debugging)
             4096,                  // Stack size (bytes)
-            this,                  // Parameter to pass
+            args,                  // Parameter to pass
             1,                     // Task priority
             NULL                   // Task handle
         ); 
@@ -1488,6 +1639,16 @@ void reconfigure_rfid_lock(const RfidLockConfig &_config)
 String rfid_lock_program(const String & code_str, uint16_t timeout)
 {
     return handler.program(code_str, timeout);
+}
+
+void rfid_lock_get_codes(RfidLockConfig::Codes & codes)
+{
+    handler.get_codes(codes);
+}
+
+void rfid_lock_update_codes(const RfidLockConfig::Codes & codes)
+{
+    handler.update_codes(codes);
 }
 
 #endif // INCLUDE_RFIDLOCK

@@ -220,9 +220,32 @@ String restActionAutonomKeyboxActuate(const String & channel_str)
 String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeout)
 {
   TRACE("REST action autonom rfid-lock program")
+  
   DEBUG("code %s, timeout %d", code_str.c_str(), (int) timeout)
 
   return actionAutonomRfidLockProgram(code_str, timeout);
+}
+
+String restActionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                    const String & type_str)
+{
+  TRACE("REST action autonom rfid-lock add")
+
+  String locks_str("[");
+  for (auto it=locks.begin(); it!=locks.end(); ++it)
+  {
+    locks_str += *it;
+    
+    if (it+1 != locks.end())
+    {
+      locks_str += ",";
+    }
+  }
+  locks_str += "]";
+  
+  DEBUG("name %s, code %s, lock(s) %s, type %s", name_str.c_str(), code_str.c_str(), locks_str.c_str(), type_str.c_str())
+
+  return actionAutonomRfidLockAdd(name_str, code_str, locks, type_str);
 }
 
 String restGet(const String & resetStamp) 
