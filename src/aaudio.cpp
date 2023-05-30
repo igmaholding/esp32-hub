@@ -449,7 +449,7 @@ class AudioHandler
 public:
 
     static const unsigned MOTION_HYS_MILLIS = 7000;
-    static const unsigned LOG_FOR_STATS_INTERVAL_SECONDS = 30;
+    static const unsigned LOG_FOR_STATS_INTERVAL_SECONDS = 60;
 
     AudioHandler()
     {
@@ -643,6 +643,7 @@ void AudioHandler::task(void *parameter)
     {
         now_millis = millis();
 
+        should_log_for_stats = false;
         motion = read_motion(_this->config.motion);
 
         if (last_motion != motion)
@@ -650,6 +651,7 @@ void AudioHandler::task(void *parameter)
             TRACE("motion %d", (int) motion)
             last_motion = motion;
         }
+        
         if (motion == 0)
         {
             if (now_millis < motion_hys_millis || motion_hys_millis + MOTION_HYS_MILLIS < now_millis)
@@ -668,6 +670,7 @@ void AudioHandler::task(void *parameter)
             TRACE("motion_hys %d", (int) motion_hys)
             last_motion_hys = motion_hys;
             should_log_for_stats = true;
+            //DEBUG("should_log_for_stats: motion_hys")
         }
 
         _this->status.motion = motion_hys;
@@ -676,6 +679,8 @@ void AudioHandler::task(void *parameter)
         {
             last_motion_millis = now_millis;
         }
+
+        bool last_audio_on = audio_on;
 
         if (_this->config.onoff == AudioConfig::onoffMotion)
         {
@@ -691,6 +696,11 @@ void AudioHandler::task(void *parameter)
         else
         {
             audio_on = _this->config.onoff == AudioConfig::onoffOn ? true : false;
+        }
+
+        if (last_audio_on != audio_on)
+        {
+            // TRACE("audio_on %d", (int) audio_on)
         }
 
         if (_this->_should_reconnect == true)
@@ -715,6 +725,7 @@ void AudioHandler::task(void *parameter)
             TRACE("audio_task: change volume to %d", (int) volume)
             _this->status.volume = volume;
             should_log_for_stats = true;
+            //DEBUG("should_log_for_stats: volume")
         }
         
         if (volume == 0)
@@ -726,11 +737,14 @@ void AudioHandler::task(void *parameter)
         {
             _this->status.is_streaming = audio_on;
             should_log_for_stats = true;
+            //DEBUG("should_log_for_stats: audio_on")
         }
 
         if (last_log_for_stats_millis > now_millis || ((now_millis-last_log_for_stats_millis)/1000) >= _this->LOG_FOR_STATS_INTERVAL_SECONDS)
         {
             should_log_for_stats = true;
+            last_log_for_stats_millis = now_millis;
+            //DEBUG("should_log_for_stats: interval")
         }
 
         if (audio_on == false)
@@ -767,8 +781,8 @@ void AudioHandler::task(void *parameter)
 
                     if (connect_ok == false)
                     {
-                        wait_retry_audio_millis = millis();
-                        TRACE("audio_task: will retry connection in %d milliseconds", (int) AUDIO_RECONNECT_TIMEOUT)
+                        wait_retry_audio_millis = now_millis;
+                        TRACE("audio_task: will retry connection in %d millis (now_millis %d) ", (int) AUDIO_RECONNECT_TIMEOUT, (int) now_millis)
                     }
                     else
                     {
