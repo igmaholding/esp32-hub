@@ -7,8 +7,12 @@
 #include <binarySemaphore.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <AHT10.h>
+#include <Wire.h>
 
-#define CALIBRATE_RH 0
+AHT10 myAHT10(AHT10_ADDRESS_0X38);
+
+#define CALIBRATE_RH 0   // HIH5030 only!
 
 extern GpioHandler gpioHandler;
 
@@ -54,42 +58,82 @@ bool ShowerGuardConfig::is_valid() const
 
     object_name = "rh.vad";
 
-    if (checkpad.get_usage(rh.vad.gpio) != GpioCheckpad::uNone)
+    if (rh.vad.is_valid())
     {
-        _err_dup(object_name, (int)rh.vad.gpio);
-        return false;
-    }
+        if (checkpad.get_usage(rh.vad.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)rh.vad.gpio);
+            return false;
+        }
 
-    if (!checkpad.set_usage(rh.vad.gpio, GpioCheckpad::uAnalogInput))
-    {
-        _err_cap(object_name, (int)rh.vad.gpio);
-        return false;
-    }
+        if (!checkpad.set_usage(rh.vad.gpio, GpioCheckpad::uAnalogInput))
+        {
+            _err_cap(object_name, (int)rh.vad.gpio);
+            return false;
+        }
 
-    if (checkpad.check_attenuation(rh.vad.atten) == adc_attenuation_t(-1))
-    {
-        _err_val(object_name, (int)rh.vad.atten);
-        return false;
+        if (checkpad.check_attenuation(rh.vad.atten) == adc_attenuation_t(-1))
+        {
+            _err_val(object_name, (int)rh.vad.atten);
+            return false;
+        }
     }
 
     object_name = "rh.vdd";
 
-    if (checkpad.get_usage(rh.vdd.gpio) != GpioCheckpad::uNone)
+    if (rh.vdd.is_valid())
     {
-        _err_dup(object_name, (int)rh.vdd.gpio);
-        return false;
+        if (checkpad.get_usage(rh.vdd.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)rh.vdd.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(rh.vdd.gpio, GpioCheckpad::uAnalogInput))
+        {
+            _err_cap(object_name, (int)rh.vdd.gpio);
+            return false;
+        }
+
+        if (checkpad.check_attenuation(rh.vdd.atten) == adc_attenuation_t(-1))
+        {
+            _err_val(object_name, (int)rh.vdd.atten);
+            return false;
+        }
     }
 
-    if (!checkpad.set_usage(rh.vdd.gpio, GpioCheckpad::uAnalogInput))
+    object_name = "rh.sda";
+
+    if (rh.sda.is_valid())
     {
-        _err_cap(object_name, (int)rh.vdd.gpio);
-        return false;
+        if (checkpad.get_usage(rh.sda.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)rh.sda.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(rh.sda.gpio, GpioCheckpad::uDigitalAll))
+        {
+            _err_cap(object_name, (int)rh.sda.gpio);
+            return false;
+        }
     }
 
-    if (checkpad.check_attenuation(rh.vdd.atten) == adc_attenuation_t(-1))
+    object_name = "rh.scl";
+
+    if (rh.scl.is_valid())
     {
-        _err_val(object_name, (int)rh.vdd.atten);
-        return false;
+        if (checkpad.get_usage(rh.scl.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)rh.scl.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(rh.scl.gpio, GpioCheckpad::uDigitalAll))
+        {
+            _err_cap(object_name, (int)rh.scl.gpio);
+            return false;
+        }
     }
 
     object_name = "lumi.ldr";
@@ -117,16 +161,19 @@ bool ShowerGuardConfig::is_valid() const
 
     object_name = "temp.channel.gpio";
 
-    if (checkpad.get_usage(temp.channel.gpio) != GpioCheckpad::uNone)
+    if (temp.channel.is_valid())
     {
-        _err_dup(object_name, (int)temp.channel.gpio);
-        return false;
-    }
+        if (checkpad.get_usage(temp.channel.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)temp.channel.gpio);
+            return false;
+        }
 
-    if (!checkpad.set_usage(temp.channel.gpio, GpioCheckpad::uDigitalAll))
-    {
-        _err_cap(object_name, (int)temp.channel.gpio);
-        return false;
+        if (!checkpad.set_usage(temp.channel.gpio, GpioCheckpad::uDigitalAll))
+        {
+            _err_cap(object_name, (int)temp.channel.gpio);
+            return false;
+        }
     }
 
     object_name = "light.channel.gpio";
@@ -257,6 +304,15 @@ bool ShowerGuardConfig::Motion::from_eprom(std::istream &is)
 
 void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
 {
+    if (json.containsKey("hw"))
+    {
+        const char *hw_str = (const char *)json["hw"];
+        hw = str_2_hw(hw_str);
+    }
+    else
+    {
+        hw = HW(-1);
+    }
     if (json.containsKey("vad"))
     {
         const JsonVariant &_json = json["vad"];
@@ -277,6 +333,30 @@ void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
             vdd.from_json(__json);
         }
     }
+    if (json.containsKey("sda"))
+    {
+        const JsonVariant &_json = json["sda"];
+
+        if (_json.containsKey("channel"))
+        {
+            const JsonVariant &__json = _json["channel"];
+            vad.from_json(__json);
+        }
+    }
+    if (json.containsKey("scl"))
+    {
+        const JsonVariant &_json = json["scl"];
+
+        if (_json.containsKey("channel"))
+        {
+            const JsonVariant &__json = _json["channel"];
+            vad.from_json(__json);
+        }
+    }
+    if (json.containsKey("addr"))
+    {
+        hw = json["addr"];
+    }
     if (json.containsKey("corr"))
     {
         corr = json["corr"];
@@ -285,15 +365,52 @@ void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
 
 void ShowerGuardConfig::Rh::to_eprom(std::ostream &os) const
 {
+    uint8_t hw_uint8_t = (uint8_t)hw;
+    os.write((const char *)&hw_uint8_t, sizeof(hw_uint8_t));
+
     vad.to_eprom(os);
     vdd.to_eprom(os);
+    sda.to_eprom(os);
+    scl.to_eprom(os);
+
+    uint8_t len = addr.length();
+    os.write((const char *)&len, sizeof(len));
+
+    if (len)
+    {
+        os.write(addr.c_str(), len);
+    }
+
     os.write((const char *)&corr, sizeof(corr));
 }
 
 bool ShowerGuardConfig::Rh::from_eprom(std::istream &is)
 {
+    uint8_t hw_uint8 = (uint8_t) -1;
+    is.read((char *)&hw_uint8, sizeof(hw_uint8));
+    hw = HW(hw_uint8);
+
     vad.from_eprom(is);
     vdd.from_eprom(is);
+    sda.from_eprom(is);
+    scl.from_eprom(is);
+
+    uint8_t len = 0;
+
+    is.read((char *)&len, sizeof(len));
+
+    if (len)
+    {
+        char buf[256];
+        is.read(buf, len);
+        buf[len] = 0;
+        addr = buf;
+    }
+    else
+    {
+        addr = "";
+    }
+
     is.read((char *)&corr, sizeof(corr));
 
     return is_valid() && !is.bad();
@@ -1007,6 +1124,14 @@ void ShowerGuardHandler::task(void *parameter)
     unsigned motion_hys_count = 0;
     ShowerGuardStatus status_copy;
 
+    Wire.begin(33,35);
+    if (myAHT10.begin() != true)
+  {
+    Serial.println(F("AHT10 not connected or fail to load calibration coefficient")); //(F()) save string to flash & keeps dynamic memory free
+  }
+  else
+  Serial.println(F("AHT10 OK"));
+
     while (_this->_is_active)
     {
         bool do_algo_loop = false;
@@ -1194,6 +1319,8 @@ void ShowerGuardHandler::task(void *parameter)
             _this->algo.debug_last_light_decision();
             _this->algo.debug_last_fan_decision();
 
+Serial.print(F("Temperature: ")); Serial.print(myAHT10.readTemperature()); Serial.println(F(" +-0.3C")); //by default "AHT10_FORCE_READ_DATA"
+  Serial.print(F("Humidity...: ")); Serial.print(myAHT10.readHumidity());    Serial.println(F(" +-2%"));   //by default "AHT10_FORCE_READ_DATA"
         }
         else
         {
@@ -1233,12 +1360,15 @@ void ShowerGuardHandler::configure_hw_temp()
 {
     // configure temp
 
-    TRACE("configure temp: gpio=%d", (int)config.temp.channel.gpio)
+    if (config.temp.channel.is_valid())
+    {
+        TRACE("configure temp: gpio=%d", (int)config.temp.channel.gpio)
 
-    ow.begin(config.temp.channel.gpio);
-    ds18b20.setOneWire(&ow);
-    ds18b20.setWaitForConversion(true);
-    ds18b20.setCheckForConversion(true);
+        ow.begin(config.temp.channel.gpio);
+        ds18b20.setOneWire(&ow);
+        ds18b20.setWaitForConversion(true);
+        ds18b20.setCheckForConversion(true);
+    }
 }
 
 void ShowerGuardHandler::configure_hw_motion(const ShowerGuardConfig::Motion &motion)
@@ -1348,67 +1478,78 @@ bool ShowerGuardHandler::read_temp(float &temp)
     //ow.reset();
     //ow.reset_search();
 
-    size_t device_count = 0;
-
-    unsigned attempts = 10;
-
-    while (device_count == 0)
-    {
-        ds18b20.begin();
-        device_count = ds18b20.getDeviceCount();
-
-        if (attempts)
-        {
-            attempts--;
-        }
-        else
-        {
-            //DEBUG("No one wire devices are found after 10 attempts")
-            break;
-        }
-    }
-
-    ds18b20.requestTemperatures();
-
-    //DEBUG("DS18b20 device count %d", (int)device_count)
-
-    float r_temp = 0;
     bool r = false;
 
-    for (size_t i = 0; i < device_count; ++i)
+    if (config.temp.channel.is_valid())
     {
-        uint8_t addr[8];
+        size_t device_count = 0;
 
-        if (ds18b20.getAddress(addr, i))
+        unsigned attempts = 10;
+
+        while (device_count == 0)
         {
-            char addr_str[32];
+            ds18b20.begin();
+            device_count = ds18b20.getDeviceCount();
 
-            sprintf(addr_str, "%02x-%02x%02x%02x%02x%02x%02x", (int)addr[0], (int)addr[6], (int)addr[5], (int)addr[4], (int)addr[3], (int)addr[2], (int)addr[1]);
-            float i_temp = ds18b20.getTempC(addr);
-
-            // DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
-
-            if (!strcmp(addr_str, config.temp.addr.c_str()))
+            if (attempts)
             {
-                r_temp = round(i_temp * 10.0) / 10.0;
+                attempts--;
+            }
+            else
+            {
+                //DEBUG("No one wire devices are found after 10 attempts")
+                break;
+            }
+        }
 
-                if (config.temp.corr != 0)
-                {
-                    //DEBUG("applying non-zero correction %f", config.temp.corr)
-                    r_temp += config.temp.corr;
-                }
+        ds18b20.requestTemperatures();
 
-                // DEBUG("this is configured device, r_temp=%f", r_temp)
+        //DEBUG("DS18b20 device count %d", (int)device_count)
 
-                if ((int)r_temp == -127)
+        float r_temp = 0;
+
+        for (size_t i = 0; i < device_count; ++i)
+        {
+            uint8_t addr[8];
+
+            if (ds18b20.getAddress(addr, i))
+            {
+                char addr_str[32];
+
+                sprintf(addr_str, "%02x-%02x%02x%02x%02x%02x%02x", (int)addr[0], (int)addr[6], (int)addr[5], (int)addr[4], (int)addr[3], (int)addr[2], (int)addr[1]);
+                float i_temp = ds18b20.getTempC(addr);
+
+                //DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
+
+                if ((config.temp.addr.isEmpty() && device_count == 1) || !strcmp(addr_str, config.temp.addr.c_str()))
                 {
-                    ERROR("reading failed with N/A value")
-                    r = false;
-                }
-                else
-                {
-                    temp = r_temp;
-                    r = true;
+                    r_temp = round(i_temp * 10.0) / 10.0;
+
+                    if (config.temp.corr != 0)
+                    {
+                        //DEBUG("applying non-zero correction %f", config.temp.corr)
+                        r_temp += config.temp.corr;
+                    }
+                    /*
+                    if (!strcmp(addr_str, config.temp.addr.c_str()))
+                    {
+                        DEBUG("this is configured device, r_temp=%f", r_temp)
+                    }
+                    else
+                    {
+                        DEBUG("this is the only device and no addr in config, r_temp=%f", r_temp)
+                    }                    
+                    */
+                    if ((int)r_temp == -127)
+                    {
+                        ERROR("reading failed with N/A value")
+                        r = false;
+                    }
+                    else
+                    {
+                        temp = r_temp;
+                        r = true;
+                    }
                 }
             }
         }

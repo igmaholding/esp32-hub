@@ -10,7 +10,7 @@ class ShowerGuardConfig
 {
     public:
 
-        const uint8_t EPROM_VERSION = 3;
+        const uint8_t EPROM_VERSION = 4;
 
         ShowerGuardConfig()
         {
@@ -83,9 +83,41 @@ class ShowerGuardConfig
     
         struct Rh
         {
+            enum HW
+            {
+                hwHih5030  = 0,
+                hwAht10    = 1,
+            };
+
             Rh()
             {
-                corr = 0;
+                hw = hwHih5030;
+                corr = 0;                
+            }
+
+            static const char * hw_2_str(HW _hw) 
+            {
+                switch(_hw)
+                {
+                    case hwHih5030:  return "HIH5030";
+                    case hwAht10:   return "AHT10";
+                }
+
+                return "<unknown>";
+            }
+
+            static HW str_2_hw(const char * str) 
+            {
+                if (!strcmp(str, hw_2_str(hwHih5030)))
+                {
+                    return hwHih5030;
+                }
+                else if (!strcmp(str, hw_2_str(hwAht10)))
+                {
+                    return hwAht10;
+                }
+
+                return HW(-1);
             }
 
             void from_json(const JsonVariant & json);
@@ -95,26 +127,70 @@ class ShowerGuardConfig
 
             bool is_valid() const 
             {
-                return vad.is_valid() && vdd.is_valid();
+                if (hw == hwHih5030)
+                {
+                    return vad.is_valid() && vdd.is_valid();
+                }
+                else if (hw == hwAht10)
+                {
+                    return sda.is_valid() && scl.is_valid() && !addr.isEmpty();
+                }
+
+                return false;
             }
 
             bool operator == (const Rh & rh) const
             {
-                return vad == rh.vad && vdd == rh.vdd && corr == rh.corr;
+                if (hw == hwHih5030 && rh.hw == hwHih5030)
+                { 
+                    return vad == rh.vad && vdd == rh.vdd && corr == rh.corr;
+                }
+                else if (hw == hwAht10 && rh.hw == hwAht10)
+                {
+                    return sda == rh.sda && scl == rh.scl && addr == rh.addr;
+                }
+
+                return false;
             }
 
             String as_string() const
             {
-                return String("{vad=") + vad.as_string() + ", vdd=" + vdd.as_string() + ", corr=" + corr + "}";
+                String r = String("{hw=") + hw_2_str(hw); 
+
+                if (hw == hwHih5030)
+                {
+                    r += ", vad=" + vad.as_string() + ", vdd=" + vdd.as_string();
+                }
+                else if (hw == hwAht10)
+                {
+                    r += ", sda=" + sda.as_string() + ", scl=" + scl.as_string() + ", addr=" + addr;
+                }
+
+                r += ", corr=" + String(corr) + "}";
+                return r;
             }
             
+            HW hw;
+            
+            // HIH5030
             AnalogInputChannelConfig vad;
             AnalogInputChannelConfig vdd;
-            float corr;
-            
+
+            // AHT10
+            GenericChannelConfig sda;
+            GenericChannelConfig scl;
+            String addr;
+
+            float corr;            
         };
         
         Rh rh;
+
+        // the temperature config has DS18B20 device address and it is optional; if there is only
+        // one device present and no device address is configured - then the one found is used
+        //
+        // moreover, the channel also can be empty in which case temperature is not requested this
+        // way (e.g. in case of AHT10 himudity sensor which has its own temperature reading)
 
         struct Temp
         {
@@ -130,7 +206,7 @@ class ShowerGuardConfig
 
             bool is_valid() const 
             {
-                return channel.is_valid() && !addr.isEmpty();
+                return addr.isEmpty() ? true : channel.is_valid();
                 // TODO: check addr OW format
             }
 
@@ -147,7 +223,6 @@ class ShowerGuardConfig
             GenericChannelConfig channel;            
             String addr;
             float corr;
-
         };
         
         Temp temp;

@@ -151,6 +151,7 @@ void setup()
                  });
 
     ArduinoOTA.begin();
+    TRACE("WIFI MAC: %s", WiFi.macAddress().c_str())
 }
 
 void loop()

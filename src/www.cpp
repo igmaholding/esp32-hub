@@ -137,6 +137,15 @@ RESPONSE:
 {
 }
 
+// NOTE:
+//
+// 1.
+// the temperature config has DS18B20 device address and it is optional (but has to be an empty string then); 
+// if there is only one device present and no device address is configured - then the one found is used
+//
+// moreover, the channel also can be empty (-1) in which case temperature is not requested this
+// way (e.g. in case of AHT10 himudity sensor which has its own temperature reading)
+
 
 [{
     "function":"shower-guard", 
@@ -150,6 +159,20 @@ RESPONSE:
 
     }
 }]
+
+[{
+    "function":"shower-guard", 
+    "config":{
+                "motion":{"channel":{"gpio":38, "inverted":0, "debounce":250}},
+                "rh":{"vad":{"channel":{"gpio":14, "atten":3}},"vdd":{"channel":{"gpio":15, "atten":3}}, "corr":0.0}, 
+                "temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0}, 
+                "lumi":{"ldr":{"channel":{"gpio":12, "atten":3}}, "corr":0.0, "threshold":50}, 
+                "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":10}, 
+                "fan":{"channel":{"gpio":34, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
+
+    }
+}]
+
 
 [{
     "function":"audio", 
