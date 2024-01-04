@@ -10,8 +10,6 @@
 #include <AHT10.h>
 #include <Wire.h>
 
-AHT10 myAHT10(AHT10_ADDRESS_0X38);
-
 #define CALIBRATE_RH 0   // HIH5030 only!
 
 extern GpioHandler gpioHandler;
@@ -340,7 +338,7 @@ void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
         if (_json.containsKey("channel"))
         {
             const JsonVariant &__json = _json["channel"];
-            vad.from_json(__json);
+            sda.from_json(__json);
         }
     }
     if (json.containsKey("scl"))
@@ -350,12 +348,12 @@ void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
         if (_json.containsKey("channel"))
         {
             const JsonVariant &__json = _json["channel"];
-            vad.from_json(__json);
+            scl.from_json(__json);
         }
     }
     if (json.containsKey("addr"))
     {
-        hw = json["addr"];
+        addr = (const char *) json["addr"];
     }
     if (json.containsKey("corr"))
     {
@@ -652,7 +650,17 @@ public:
     {
         _is_active = false;
         _is_finished = true;
+        aht10 = NULL;
         ds18b20.setOneWire(&ow);
+    }
+
+    ~ShowerGuardHandler()
+    {
+        if (aht10)
+        {
+            delete aht10;
+            aht10 = NULL;
+        }
     }
 
     bool is_active() const { return _is_active; }
@@ -677,14 +685,14 @@ public:
 
 protected:
     void configure_hw();
-    static void configure_hw_rh(const ShowerGuardConfig::Rh &rh);
+    void configure_hw_rh();
     void configure_hw_temp();
     static void configure_hw_motion(const ShowerGuardConfig::Motion &motion);
     static void configure_hw_lumi(const ShowerGuardConfig::Lumi &lumi);
     static void configure_hw_light(const ShowerGuardConfig::Light &light);
     static void configure_hw_fan(const ShowerGuardConfig::Fan &fan);
 
-    static float read_rh(const ShowerGuardConfig::Rh &rh, float temp);
+    float read_rh(float temp);
     bool read_temp(float &temp);
     static bool read_motion(const ShowerGuardConfig::Motion &motion);
     static float read_lumi(const ShowerGuardConfig::Lumi &lumi);
@@ -702,6 +710,7 @@ protected:
 
     OneWire ow;
     DallasTemperature ds18b20;
+    AHT10 * aht10;
 
     ShowerGuardAlgo algo;
 };
@@ -1124,14 +1133,6 @@ void ShowerGuardHandler::task(void *parameter)
     unsigned motion_hys_count = 0;
     ShowerGuardStatus status_copy;
 
-    Wire.begin(33,35);
-    if (myAHT10.begin() != true)
-  {
-    Serial.println(F("AHT10 not connected or fail to load calibration coefficient")); //(F()) save string to flash & keeps dynamic memory free
-  }
-  else
-  Serial.println(F("AHT10 OK"));
-
     while (_this->_is_active)
     {
         bool do_algo_loop = false;
@@ -1162,7 +1163,7 @@ void ShowerGuardHandler::task(void *parameter)
 
             if (rh_read_slot_count == 0)
             {
-                float i_rh = _this->read_rh(_this->config.rh, temp);
+                float i_rh = _this->read_rh(temp);
                 rh_read_slot_count = RH_READ_SLOT - 1;
                 //DEBUG("read rh=%f", rh)
 
@@ -1196,7 +1197,7 @@ void ShowerGuardHandler::task(void *parameter)
             {
                 if (CALIBRATE_RH)  // to make trace more often, this is calibration mode only
                 {
-                    _this->read_rh(_this->config.rh, temp);
+                    _this->read_rh(temp);
                 }
                 rh_read_slot_count--;
             }
@@ -1277,12 +1278,12 @@ void ShowerGuardHandler::task(void *parameter)
                         light_luminance_mask = true;   
                     }
 
-                    write_light(_this->config.light, light && light_luminance_mask);
+                    //write_light(_this->config.light, light && light_luminance_mask);
                 }
 
                 if (fan != last_fan)
                 {
-                    write_fan(_this->config.fan, fan);
+                    //write_fan(_this->config.fan, fan);
                 }
 
                 if (last_light != light || last_fan != fan)
@@ -1309,6 +1310,12 @@ void ShowerGuardHandler::task(void *parameter)
         {
             logging_slot_count = LOGGING_SLOT;
 
+            // moved it here from -- if now... != last... -- to also periodically write
+            // down the latest value in case we somehow miss to do it at value change (???)
+
+            write_fan(_this->config.fan, fan);
+            write_light(_this->config.light, light && light_luminance_mask);
+
             //TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
 
             TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"luminance_percent\":%f, \"light_luminance_mask\":%d, "
@@ -1318,9 +1325,6 @@ void ShowerGuardHandler::task(void *parameter)
 
             _this->algo.debug_last_light_decision();
             _this->algo.debug_last_fan_decision();
-
-Serial.print(F("Temperature: ")); Serial.print(myAHT10.readTemperature()); Serial.println(F(" +-0.3C")); //by default "AHT10_FORCE_READ_DATA"
-  Serial.print(F("Humidity...: ")); Serial.print(myAHT10.readHumidity());    Serial.println(F(" +-2%"));   //by default "AHT10_FORCE_READ_DATA"
         }
         else
         {
@@ -1338,7 +1342,7 @@ Serial.print(F("Temperature: ")); Serial.print(myAHT10.readTemperature()); Seria
 
 void ShowerGuardHandler::configure_hw()
 {
-    configure_hw_rh(config.rh);
+    configure_hw_rh();
     configure_hw_temp();
     configure_hw_motion(config.motion);
     configure_hw_lumi(config.lumi);
@@ -1346,14 +1350,41 @@ void ShowerGuardHandler::configure_hw()
     configure_hw_fan(config.fan);
 }
 
-void ShowerGuardHandler::configure_hw_rh(const ShowerGuardConfig::Rh &rh)
+void ShowerGuardHandler::configure_hw_rh()
 {
     // configure rh
 
-    TRACE("configure rh.vad: gpio=%d, atten=%d", (int)rh.vad.gpio, (int)rh.vad.atten)
-    analogSetPinAttenuation(rh.vad.gpio, (adc_attenuation_t)rh.vad.atten);
-    TRACE("configure rh.vdd: gpio=%d, atten=%d", (int)rh.vdd.gpio, (int)rh.vdd.atten)
-    analogSetPinAttenuation(rh.vdd.gpio, (adc_attenuation_t)rh.vdd.atten);
+    if (aht10)
+    {
+        delete aht10;
+        aht10 = NULL;
+    }
+
+    if (config.rh.hw == ShowerGuardConfig::Rh::hwHih5030)
+    {
+        TRACE("configure rh.vad: gpio=%d, atten=%d", (int)config.rh.vad.gpio, (int)config.rh.vad.atten)
+        analogSetPinAttenuation(config.rh.vad.gpio, (adc_attenuation_t)config.rh.vad.atten);
+        TRACE("configure rh.vdd: gpio=%d, atten=%d", (int)config.rh.vdd.gpio, (int)config.rh.vdd.atten)
+        analogSetPinAttenuation(config.rh.vdd.gpio, (adc_attenuation_t)config.rh.vdd.atten);
+    }
+    else if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
+    {
+        // this will only work once; if sda / scl are changed the target needs to be restarted!
+        TRACE("configure sda: gpio=%d, scl: gpio=%d", (int)config.rh.sda.gpio, (int)config.rh.scl.gpio)
+        Wire.begin(config.rh.sda.gpio,config.rh.scl.gpio); 
+
+        aht10 = new AHT10();  // addr is default and fixed, ignore from config?
+
+        if (aht10->begin() != true)
+        {
+            ERROR("AHT10 not connected or fail to load calibration coefficient")
+        }
+        else
+        {
+            TRACE("AHT10 begin OK")
+
+        }
+    }
 }
 
 void ShowerGuardHandler::configure_hw_temp()
@@ -1433,43 +1464,70 @@ unsigned ShowerGuardHandler::analog_read(uint8_t gpio)
     return analogRead(gpio);
 }
 
-float ShowerGuardHandler::read_rh(const ShowerGuardConfig::Rh &rh, float temp)
+float ShowerGuardHandler::read_rh(float temp)
 {
-    unsigned vad = analog_read(rh.vad.gpio);
-    unsigned vdd = analog_read(rh.vdd.gpio);
-
-    if (CALIBRATE_RH)
+    if (config.rh.hw == ShowerGuardConfig::Rh::hwHih5030)
     {
-        // trace to calibrate voltage divider
-        // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
-        DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
-    }
+        unsigned vad = analog_read(config.rh.vad.gpio);
+        unsigned vdd = analog_read(config.rh.vdd.gpio);
 
-    if (vdd != 0)
+        if (CALIBRATE_RH)
+        {
+            // trace to calibrate voltage divider
+            // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
+            DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
+        }
+
+        if (vdd != 0)
+        {
+            // the formula with temperature compensation
+            // (((Vout/VS)-0.1515)/0.00636) / (1.0546-0.00216*T) = (RH )
+
+            float r_rh = (((float(vad) / float(vdd)) - 0.1515) / 0.00636) / (1.0546 - 0.00216 * temp);
+
+            if (config.rh.corr != 0)
+            {
+                //DEBUG("applying non-zero rh correction %f", rh.corr)
+                r_rh += config.rh.corr;
+            }
+
+            if (r_rh < 0)
+            {
+                r_rh = 0;
+            }
+            else if (r_rh > 100)
+            {
+                r_rh = 100;
+            }
+
+            return r_rh;
+        }
+    }
+    else if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
     {
-        // the formula with temperatore compensation
-        // (((Vout/VS)-0.1515)/0.00636) / (1.0546-0.00216*T) = (RH )
+        float r_rh = 0;
 
-        float r_rh = (((float(vad) / float(vdd)) - 0.1515) / 0.00636) / (1.0546 - 0.00216 * temp);
-
-        if (rh.corr != 0)
+        if (aht10)
         {
-            //DEBUG("applying non-zero rh correction %f", rh.corr)
-            r_rh += rh.corr;
-        }
+            r_rh = aht10->readHumidity();
 
-        if (r_rh < 0)
-        {
-            r_rh = 0;
-        }
-        else if (r_rh > 100)
-        {
-            r_rh = 100;
-        }
+            if (r_rh == AHT10_ERROR)
+            {
+                ERROR("failed to read humidity from AHT10")
+            }
+            else
+            {
+                if (config.rh.corr != 0)
+                {
+                    //DEBUG("applying non-zero rh correction %f", rh.corr)
+                    r_rh += config.rh.corr;
+                }
 
-        return r_rh;
+                return r_rh; 
+            }
+        }
     }
-
+    
     return 0;
 }
 
@@ -1504,7 +1562,7 @@ bool ShowerGuardHandler::read_temp(float &temp)
 
         ds18b20.requestTemperatures();
 
-        //DEBUG("DS18b20 device count %d", (int)device_count)
+        DEBUG("DS18b20 device count %d", (int)device_count)
 
         float r_temp = 0;
 
@@ -1519,7 +1577,8 @@ bool ShowerGuardHandler::read_temp(float &temp)
                 sprintf(addr_str, "%02x-%02x%02x%02x%02x%02x%02x", (int)addr[0], (int)addr[6], (int)addr[5], (int)addr[4], (int)addr[3], (int)addr[2], (int)addr[1]);
                 float i_temp = ds18b20.getTempC(addr);
 
-                //DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
+                
+                DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
 
                 if ((config.temp.addr.isEmpty() && device_count == 1) || !strcmp(addr_str, config.temp.addr.c_str()))
                 {
@@ -1554,6 +1613,40 @@ bool ShowerGuardHandler::read_temp(float &temp)
             }
         }
     }
+
+    if (r == false)
+    {
+        if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
+        {
+            float r_temp = 0;
+
+            if (aht10)
+            {
+                r_temp = aht10->readTemperature();
+
+                if (r_temp == AHT10_ERROR)
+                {
+                    ERROR("failed to read temperature from AHT10")
+                }
+                else
+                {
+                    r = true;
+                }
+            }
+
+            if (r == true)
+            {
+                if (config.temp.corr != 0)
+                {
+                    //DEBUG("applying non-zero correction %f", config.temp.corr)
+                    r_temp += config.temp.corr;
+                }
+
+                temp = r_temp;
+            }
+        }
+    }
+    
     return r;
 }
 

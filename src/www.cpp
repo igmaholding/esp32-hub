@@ -146,32 +146,51 @@ RESPONSE:
 // moreover, the channel also can be empty (-1) in which case temperature is not requested this
 // way (e.g. in case of AHT10 himudity sensor which has its own temperature reading)
 
+// ESP32 + HIH5030
 
 [{
     "function":"shower-guard", 
     "config":{
                 "motion":{"channel":{"gpio":23, "inverted":0, "debounce":250}},
-                "rh":{"vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}, "corr":0.0}, 
+                "rh":{"hw":"HIH5030", "vad":{"channel":{"gpio":34, "atten":3}},"vdd":{"channel":{"gpio":35, "atten":3}}, "corr":0.0}, 
                 "temp":{"channel":{"gpio":4}, "addr":"28-01201d2496c8", "corr":0}, 
-                "lumi":{"ldr":{"channel":{"gpio":32, "atten":3}}, "corr":0.0, "threshold":12.3}, 
+                "lumi":{"ldr":{"channel":{"gpio":32, "atten":3}}, "corr":0.0, "threshold":50}, 
                 "light":{"channel":{"gpio":12, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":60}, 
                 "fan":{"channel":{"gpio":13, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
 
     }
 }]
 
+// ESP32-s2 + HIH5030
+
 [{
     "function":"shower-guard", 
     "config":{
                 "motion":{"channel":{"gpio":38, "inverted":0, "debounce":250}},
-                "rh":{"vad":{"channel":{"gpio":14, "atten":3}},"vdd":{"channel":{"gpio":15, "atten":3}}, "corr":0.0}, 
+                "rh":{"hw":"HIH5030", "vad":{"channel":{"gpio":14, "atten":3}},"vdd":{"channel":{"gpio":15, "atten":3}}, "corr":0.0}, 
                 "temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0}, 
                 "lumi":{"ldr":{"channel":{"gpio":12, "atten":3}}, "corr":0.0, "threshold":50}, 
-                "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":10}, 
+                "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":120}, 
                 "fan":{"channel":{"gpio":34, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
 
     }
 }]
+
+// esp32-s2 + AHT10
+
+[{
+    "function":"shower-guard", 
+    "config":{
+                "motion":{"channel":{"gpio":38, "inverted":0, "debounce":250}},
+                "rh":{"hw":"AHT10", "sda":{"channel":{"gpio":33}},"scl":{"channel":{"gpio":35}}, "addr":"0x38", "corr":0.0}, 
+                "temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0}, 
+                "lumi":{"ldr":{"channel":{"gpio":12, "atten":3}}, "corr":0.0, "threshold":50}, 
+                "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":120}, 
+                "fan":{"channel":{"gpio":34, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
+
+    }
+}]
+
 
 
 [{
