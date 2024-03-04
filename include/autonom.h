@@ -16,10 +16,11 @@ String actionAutonomRfidLockAdd(const String & name_str, const String & code_str
 
 enum FunctionType
 {
-    ftShowerGuard = 1,
-    ftKeybox =      2,
-    ftAudio =       3,
-    ftRfidLock =    4
+    ftShowerGuard =  1,
+    ftKeybox =       2,
+    ftAudio =        3,
+    ftRfidLock =     4,
+    ftProportional = 5
 };
 
 const char * function_type_2_str(FunctionType);

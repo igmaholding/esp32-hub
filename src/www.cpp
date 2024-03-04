@@ -224,6 +224,28 @@ RESPONSE:
     }
 }]
 
+[{
+    "function":"proportional", 
+    "config":{
+
+                "channels":[
+                            {"one_a":{"channel":{"gpio":3, "inverted":false}},
+                             "one_b":{"channel":{"gpio":5, "inverted":false}},
+                             "open":{"channel":{"gpio":9, "inverted":0, "debounce":250}},
+                             "closed":{"channel":{"gpio":7, "inverted":0, "debounce":250}},
+                             "valve_profile":"xs15"
+                             }, ...
+                           ]
+                },
+
+                "valve_profiles":[
+                            { "open_time":15
+                             }, ...
+                            
+                            ]
+                },
+    }
+}]
 
 REST POST cleanup
 URL: <base>/cleanup

@@ -21,6 +21,10 @@
 #include <rfidLock.h>
 #endif
 
+#ifdef INCLUDE_PROPORTIONAL
+#include <proportional.h>
+#endif
+
 #include <trace.h>
 #include <epromImage.h>
 
@@ -35,6 +39,7 @@ class AutonomTaskManager
             keyboxActive = false;
             audioActive = false;
             rfidLockActive = false;
+            proportionalActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -93,6 +98,21 @@ class AutonomTaskManager
         
         #endif
 
+        #ifdef INCLUDE_PROPORTIONAL
+        
+        void startProportional(const ProportionalConfig &);
+        void stopProportional();
+        void reconfigureProportional(const ProportionalConfig &);
+        
+        String setValue(uint8_t value);
+        String calibrate();
+
+        ProportionalStatus getProportionalStatus() const;
+
+        bool isProportionalActive() const { return proportionalActive; }
+        
+        #endif
+
         void stopAll();
 
 
@@ -102,6 +122,7 @@ class AutonomTaskManager
         bool keyboxActive;
         bool audioActive;
         bool rfidLockActive;
+        bool proportionalActive;
 
 };
 
@@ -268,6 +289,37 @@ RfidLockStatus AutonomTaskManager::getRfidLockStatus() const
 
 #endif // INCLUDE_RFIDLOCK
 
+#ifdef INCLUDE_PROPORTIONAL
+
+void AutonomTaskManager::startProportional(const ProportionalConfig & config)
+{
+    TRACE("Starting autonom task proportional")
+    start_proportional_task(config);
+    proportionalActive = true;
+}
+
+void AutonomTaskManager::stopProportional()
+{
+    TRACE("stopping autonom task proportional")
+    stop_proportional_task();
+    proportionalActive = false;
+}
+
+void AutonomTaskManager::reconfigureProportional(const ProportionalConfig & config)
+{
+    TRACE("reconfiguring autonom task proportional")
+    reconfigure_proportional(config);
+}
+
+ProportionalStatus AutonomTaskManager::getProportionalStatus() const
+{
+    TRACE("getProportionalStatus")
+    return get_proportional_status();
+}
+
+#endif // INCLUDE_PROPORTIONAL
+
+
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
@@ -298,6 +350,24 @@ void AutonomTaskManager::stopAll()
     }
 
     #endif
+
+    # if INCLUDE_RFIDLOCK
+
+    if (rfidLockActive)
+    {
+        stopRfidLock();
+    }
+
+    #endif
+
+    # if INCLUDE_PROPORTIONAL
+
+    if (proportionalActive)
+    {
+        stopProportional();
+    }
+
+    #endif
 }
 
 
@@ -316,6 +386,8 @@ const char * function_type_2_str(FunctionType ft)
             return "audio";
         case ftRfidLock:
             return "rfid-lock";
+        case ftProportional:
+            return "proportional";
         default:
             return "<unknown>";    
     }
@@ -346,6 +418,10 @@ String setupAutonom(const JsonVariant & json)
 
     #ifdef INCLUDE_RFIDLOCK
     RfidLockConfig rfidLockConfig;
+    #endif
+
+    #ifdef INCLUDE_PROPORTIONAL
+    ProportionalConfig proportionalConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -592,7 +668,56 @@ String setupAutonom(const JsonVariant & json)
                     ERROR(buf)
                     return String(buf);
 
-                    #endif // INCLUDE_AUDIO
+                    #endif // INCLUDE_RFIDLOCK
+                }
+                else
+                if (function == "proportional")
+                {
+                    #ifdef INCLUDE_PROPORTIONAL
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        proportionalConfig.from_json(config_json);
+
+                        TRACE("function %s: audioConfig.is_valid=%s", function.c_str(), (proportionalConfig.is_valid() ? "true" : "false"))
+                        TRACE(proportionalConfig.as_string().c_str())
+
+                        if (proportionalConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            proportionalConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            epromImage.blocks.insert({(uint8_t) ftAudio, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_PROPORTIONAL
                 }
                 else
                 {
@@ -646,6 +771,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.startRfidLock(rfidLockConfig);
                     #endif
                 }
+                else
+                if (*it == ftProportional)
+                {
+                    #ifdef INCLUDE_PROPORTIONAL
+                    autonomTaskManager.startProportional(proportionalConfig);
+                    #endif
+                }
 
             }
             for (auto it=removed.begin(); it!=removed.end(); ++it)
@@ -677,6 +809,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopRfidLock();
                     #endif
                 }
+                else
+                if (*it == ftProportional)
+                {
+                    #ifdef INCLUDE_PROPORTIONAL
+                    autonomTaskManager.stopProportional();
+                    #endif
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
@@ -705,6 +844,13 @@ String setupAutonom(const JsonVariant & json)
                 {
                     #ifdef INCLUDE_RFIDLOCK
                     autonomTaskManager.reconfigureRfidLock(rfidLockConfig);
+                    #endif
+                }
+                else
+                if (*it == ftProportional)
+                {
+                    #ifdef INCLUDE_PROPORTIONAL
+                    autonomTaskManager.reconfigureProportional(proportionalConfig);
                     #endif
                 }
             }
@@ -945,6 +1091,15 @@ void getAutonom(JsonVariant & json)
   }
 
   #endif
+
+  #ifdef INCLUDE_PROPORTIONAL
+  if (autonomTaskManager.isProportionalActive())
+  {
+        ProportionalStatus status = autonomTaskManager.getProportionalStatus();
+        status.to_json(json);
+  }
+
+  #endif
 }
 
 void restoreAutonom() 
@@ -1039,6 +1194,25 @@ void restoreAutonom()
                     TRACE("Config read failure")
                 }}
                 #endif // INCLUDE_RFIDLOCK
+                break;
+
+              case ftProportional:
+                
+                #ifdef INCLUDE_PROPORTIONAL
+                {ProportionalConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startProportional(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_PROPORTIONAL
                 break;
 
               default:
