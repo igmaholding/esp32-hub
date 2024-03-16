@@ -18,6 +18,9 @@ String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeou
 String restActionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
                                     const String & type_str);
 
+String restActionAutonomProportionalCalibrate(const String & channel_str);
+String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str);
+
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);
 

@@ -1,15 +1,11 @@
 #ifdef INCLUDE_PROPORTIONAL
 #include <ArduinoJson.h>
-#include <showerGuard.h>
+#include <proportional.h>
 #include <gpio.h>
 #include <trace.h>
 #include <binarySemaphore.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include <AHT10.h>
 #include <Wire.h>
-
-#define CALIBRATE_RH 0   // HIH5030 only!
+#include <deque>
 
 extern GpioHandler gpioHandler;
 
@@ -28,235 +24,165 @@ static void _err_val(const char *name, int value)
     ERROR("%s %d incorrect", name, value)
 }
 
-bool ShowerGuardConfig::is_valid() const
+bool ProportionalConfig::is_valid() const
 {
-    bool r = motion.is_valid() && rh.is_valid() && temp.is_valid() && lumi.is_valid() && light.is_valid() && fan.is_valid();
-
-    if (r == false)
-    {
-        return false;
-    }
-
     GpioCheckpad checkpad;
 
-    const char *object_name = "motion.channel.gpio";
+    size_t i = 0;
 
-    if (checkpad.get_usage(motion.channel.gpio) != GpioCheckpad::uNone)
+    for (auto it = channels.begin(); it != channels.end(); ++it, ++i)
     {
-        _err_dup(object_name, (int)motion.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(motion.channel.gpio, GpioCheckpad::uDigitalInput))
-    {
-        _err_cap(object_name, (int)motion.channel.gpio);
-        return false;
-    }
-
-    object_name = "rh.vad";
-
-    if (rh.vad.is_valid())
-    {
-        if (checkpad.get_usage(rh.vad.gpio) != GpioCheckpad::uNone)
+        if (it->is_valid() == false)
         {
-            _err_dup(object_name, (int)rh.vad.gpio);
             return false;
         }
 
-        if (!checkpad.set_usage(rh.vad.gpio, GpioCheckpad::uAnalogInput))
+        char object_name[64];
+        sprintf(object_name, "channel[%d].one_a", (int) i);
+
+        if (checkpad.get_usage(it->one_a.gpio) != GpioCheckpad::uNone)
         {
-            _err_cap(object_name, (int)rh.vad.gpio);
+            _err_dup(object_name, (int)it->one_a.gpio);
             return false;
         }
 
-        if (checkpad.check_attenuation(rh.vad.atten) == adc_attenuation_t(-1))
+        if (!checkpad.set_usage(it->one_a.gpio, GpioCheckpad::uDigitalOutput))
         {
-            _err_val(object_name, (int)rh.vad.atten);
-            return false;
-        }
-    }
-
-    object_name = "rh.vdd";
-
-    if (rh.vdd.is_valid())
-    {
-        if (checkpad.get_usage(rh.vdd.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rh.vdd.gpio);
+            _err_cap(object_name, (int)it->one_a.gpio);
             return false;
         }
 
-        if (!checkpad.set_usage(rh.vdd.gpio, GpioCheckpad::uAnalogInput))
+        sprintf(object_name, "channel[%d].one_b", (int) i);
+
+        if (checkpad.get_usage(it->one_b.gpio) != GpioCheckpad::uNone)
         {
-            _err_cap(object_name, (int)rh.vdd.gpio);
+            _err_dup(object_name, (int)it->one_b.gpio);
             return false;
         }
 
-        if (checkpad.check_attenuation(rh.vdd.atten) == adc_attenuation_t(-1))
+        if (!checkpad.set_usage(it->one_b.gpio, GpioCheckpad::uDigitalOutput))
         {
-            _err_val(object_name, (int)rh.vdd.atten);
-            return false;
-        }
-    }
-
-    object_name = "rh.sda";
-
-    if (rh.sda.is_valid())
-    {
-        if (checkpad.get_usage(rh.sda.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rh.sda.gpio);
+            _err_cap(object_name, (int)it->one_b.gpio);
             return false;
         }
 
-        if (!checkpad.set_usage(rh.sda.gpio, GpioCheckpad::uDigitalAll))
+        sprintf(object_name, "channel[%d].open", (int) i);
+
+        if (checkpad.get_usage(it->open.gpio) != GpioCheckpad::uNone)
         {
-            _err_cap(object_name, (int)rh.sda.gpio);
+            _err_dup(object_name, (int)it->open.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(it->open.gpio, GpioCheckpad::uDigitalInput))
+        {
+            _err_cap(object_name, (int)it->open.gpio);
+            return false;
+        }
+
+        sprintf(object_name, "channel[%d].closed", (int) i);
+
+        if (checkpad.get_usage(it->closed.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)it->closed.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(it->closed.gpio, GpioCheckpad::uDigitalInput))
+        {
+            _err_cap(object_name, (int)it->closed.gpio);
             return false;
         }
     }
-
-    object_name = "rh.scl";
-
-    if (rh.scl.is_valid())
-    {
-        if (checkpad.get_usage(rh.scl.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rh.scl.gpio);
-            return false;
-        }
-
-        if (!checkpad.set_usage(rh.scl.gpio, GpioCheckpad::uDigitalAll))
-        {
-            _err_cap(object_name, (int)rh.scl.gpio);
-            return false;
-        }
-    }
-
-    object_name = "lumi.ldr";
-
-    if (lumi.is_configured())
-    {
-        if (checkpad.get_usage(lumi.ldr.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)lumi.ldr.gpio);
-            return false;
-        }
-
-        if (!checkpad.set_usage(lumi.ldr.gpio, GpioCheckpad::uAnalogInput))
-        {
-            _err_cap(object_name, (int)lumi.ldr.gpio);
-            return false;
-        }
-
-        if (checkpad.check_attenuation(lumi.ldr.atten) == adc_attenuation_t(-1))
-        {
-            _err_val(object_name, (int)lumi.ldr.atten);
-            return false;
-        }
-    }
-
-    object_name = "temp.channel.gpio";
-
-    if (temp.channel.is_valid())
-    {
-        if (checkpad.get_usage(temp.channel.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)temp.channel.gpio);
-            return false;
-        }
-
-        if (!checkpad.set_usage(temp.channel.gpio, GpioCheckpad::uDigitalAll))
-        {
-            _err_cap(object_name, (int)temp.channel.gpio);
-            return false;
-        }
-    }
-
-    object_name = "light.channel.gpio";
-
-    if (checkpad.get_usage(light.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)light.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(light.channel.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)light.channel.gpio);
-        return false;
-    }
-
-    object_name = "fan.channel.gpio";
-
-    if (checkpad.get_usage(fan.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)fan.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(fan.channel.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)fan.channel.gpio);
-        return false;
-    }
-
+    
     return true;
 }
 
-void ShowerGuardConfig::from_json(const JsonVariant &json)
+
+void ProportionalConfig::from_json(const JsonVariant &json)
 {
-    if (json.containsKey("motion"))
+    //DEBUG("proportional config from_json")
+    clear();
+
+    if (json.containsKey("channels"))
     {
-        const JsonVariant &_json = json["motion"];
-        motion.from_json(_json);
+        const JsonVariant &_json = json["channels"];
+
+        if (_json.is<JsonArray>())
+        {
+            const JsonArray & jsonArray = _json.as<JsonArray>();
+            auto iterator = jsonArray.begin();
+
+            while(iterator != jsonArray.end())
+            {
+                const JsonVariant & __json = *iterator;
+
+                Channel channel;
+                channel.from_json(__json);
+                channels.push_back(channel);
+                //DEBUG("Channel from_json, %s", channel.as_string().c_str())
+
+                ++iterator;
+            }
+        }
     }
 
-    if (json.containsKey("rh"))
+    if (json.containsKey("valve_profiles"))
     {
-        const JsonVariant &_json = json["rh"];
-        rh.from_json(_json);
-    }
+        //DEBUG("contains key valve_profiles")
+        const JsonVariant &_json = json["valve_profiles"];
 
-    if (json.containsKey("temp"))
-    {
-        const JsonVariant &_json = json["temp"];
-        temp.from_json(_json);
-    }
+        if (_json.is<JsonArray>())
+        {
+            //DEBUG("valve_profiles is array")
+            const JsonArray & jsonArray = _json.as<JsonArray>();
+            auto iterator = jsonArray.begin();
 
-    lumi.clear();
+            while(iterator != jsonArray.end())
+            {
+                //DEBUG("analysing valve_profiles item")
+                const JsonVariant & __json = *iterator;
 
-    if (json.containsKey("lumi"))
-    {
-        const JsonVariant &_json = json["lumi"];
-        lumi.from_json(_json);
-    }
-
-    if (json.containsKey("light"))
-    {
-        const JsonVariant &_json = json["light"];
-        light.from_json(_json);
-    }
-
-    if (json.containsKey("fan"))
-    {
-        const JsonVariant &_json = json["fan"];
-        fan.from_json(_json);
+                if (__json.containsKey("name"))
+                {
+                    String name = __json["name"]; 
+                    ValveProfile valve_profile;
+                    valve_profile.from_json(__json);
+                    valve_profiles.insert(std::make_pair(name,valve_profile));
+                    //DEBUG("valve_profile from_json: name=%s, %s", name.c_str(), valve_profile.as_string().c_str())
+                }
+                ++iterator;
+            }
+        }
     }
 }
 
-void ShowerGuardConfig::to_eprom(std::ostream &os) const
+void ProportionalConfig::to_eprom(std::ostream &os) const
 {
     os.write((const char *)&EPROM_VERSION, sizeof(EPROM_VERSION));
-    motion.to_eprom(os);
-    rh.to_eprom(os);
-    temp.to_eprom(os);
-    lumi.to_eprom(os);
-    light.to_eprom(os);
-    fan.to_eprom(os);
+
+    uint8_t count = (uint8_t)channels.size();
+    os.write((const char *)&count, sizeof(count));
+
+   for (auto it = channels.begin(); it != channels.end(); ++it)
+    {
+        it->to_eprom(os);
+    }
+
+    count = (uint8_t)valve_profiles.size();
+    os.write((const char *)&count, sizeof(count));
+
+   for (auto it = valve_profiles.begin(); it != valve_profiles.end(); ++it)
+    {
+        uint8_t len = it->first.length();
+        os.write((const char *)&len, sizeof(len));
+        os.write((const char *)it->first.c_str(), len);
+
+        it->second.to_eprom(os);
+    }
 }
 
-bool ShowerGuardConfig::from_eprom(std::istream &is)
+bool ProportionalConfig::from_eprom(std::istream &is)
 {
     uint8_t eprom_version = EPROM_VERSION;
 
@@ -264,234 +190,110 @@ bool ShowerGuardConfig::from_eprom(std::istream &is)
 
     if (eprom_version == EPROM_VERSION)
     {
-        motion.from_eprom(is);
-        rh.from_eprom(is);
-        temp.from_eprom(is);
-        lumi.from_eprom(is);
-        light.from_eprom(is);
-        fan.from_eprom(is);
+        clear();
+
+        uint8_t count = 0;
+        is.read((char *)&count, sizeof(count));
+
+        for (size_t i=0; i<count; ++i)
+        {
+            Channel channel;
+            channel.from_eprom(is);
+            channels.push_back(channel);
+        }
+
+        count = 0;
+        is.read((char *)&count, sizeof(count));
+
+        for (size_t i=0; i<count; ++i)
+        {
+            uint8_t len = 0;
+            is.read((char *)&len, sizeof(len));
+
+            if (len)
+            {
+                char buf[256];
+                is.read(buf, len);
+                buf[len] = 0;
+                String name = buf;
+
+                ValveProfile valve_profile;
+                valve_profile.from_eprom(is);
+                valve_profiles[name] = valve_profile;
+
+            }
+        }
         return is_valid() && !is.bad();
     }
     else
     {
-        ERROR("Failed to read ShowerGuardConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
+        ERROR("Failed to read ProportionalConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
         return false;
     }
 }
 
-void ShowerGuardConfig::Motion::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("channel"))
-    {
-        const JsonVariant &_json = json["channel"];
-        channel.from_json(_json);
-    }
-}
-
-void ShowerGuardConfig::Motion::to_eprom(std::ostream &os) const
-{
-    channel.to_eprom(os);
-}
-
-bool ShowerGuardConfig::Motion::from_eprom(std::istream &is)
-{
-    channel.from_eprom(is);
-    return is_valid() && !is.bad();
-}
-
-void ShowerGuardConfig::Rh::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("hw"))
-    {
-        const char *hw_str = (const char *)json["hw"];
-        hw = str_2_hw(hw_str);
-    }
-    else
-    {
-        hw = HW(-1);
-    }
-    if (json.containsKey("vad"))
-    {
-        const JsonVariant &_json = json["vad"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &__json = _json["channel"];
-            vad.from_json(__json);
-        }
-    }
-    if (json.containsKey("vdd"))
-    {
-        const JsonVariant &_json = json["vdd"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &__json = _json["channel"];
-            vdd.from_json(__json);
-        }
-    }
-    if (json.containsKey("sda"))
-    {
-        const JsonVariant &_json = json["sda"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &__json = _json["channel"];
-            sda.from_json(__json);
-        }
-    }
-    if (json.containsKey("scl"))
-    {
-        const JsonVariant &_json = json["scl"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &__json = _json["channel"];
-            scl.from_json(__json);
-        }
-    }
-    if (json.containsKey("addr"))
-    {
-        addr = (const char *) json["addr"];
-    }
-    if (json.containsKey("corr"))
-    {
-        corr = json["corr"];
-    }
-}
-
-void ShowerGuardConfig::Rh::to_eprom(std::ostream &os) const
-{
-    uint8_t hw_uint8_t = (uint8_t)hw;
-    os.write((const char *)&hw_uint8_t, sizeof(hw_uint8_t));
-
-    vad.to_eprom(os);
-    vdd.to_eprom(os);
-    sda.to_eprom(os);
-    scl.to_eprom(os);
-
-    uint8_t len = addr.length();
-    os.write((const char *)&len, sizeof(len));
-
-    if (len)
-    {
-        os.write(addr.c_str(), len);
-    }
-
-    os.write((const char *)&corr, sizeof(corr));
-}
-
-bool ShowerGuardConfig::Rh::from_eprom(std::istream &is)
-{
-    uint8_t hw_uint8 = (uint8_t) -1;
-    is.read((char *)&hw_uint8, sizeof(hw_uint8));
-    hw = HW(hw_uint8);
-
-    vad.from_eprom(is);
-    vdd.from_eprom(is);
-    sda.from_eprom(is);
-    scl.from_eprom(is);
-
-    uint8_t len = 0;
-
-    is.read((char *)&len, sizeof(len));
-
-    if (len)
-    {
-        char buf[256];
-        is.read(buf, len);
-        buf[len] = 0;
-        addr = buf;
-    }
-    else
-    {
-        addr = "";
-    }
-
-    is.read((char *)&corr, sizeof(corr));
-
-    return is_valid() && !is.bad();
-}
-
-void ShowerGuardConfig::Lumi::from_json(const JsonVariant &json)
+void ProportionalConfig::Channel::from_json(const JsonVariant &json)
 {
     clear();
 
-    if (json.containsKey("ldr"))
+    if (json.containsKey("one_a"))
     {
-        const JsonVariant &_json = json["ldr"];
-
-        if (_json.containsKey("channel"))
-        {
-            const JsonVariant &__json = _json["channel"];
-            ldr.from_json(__json);
-        }
-    }
-    if (json.containsKey("corr"))
-    {
-        corr = json["corr"];
-    }
-    if (json.containsKey("threshold"))
-    {
-        threshold = json["threshold"];
-    }
-}
-
-void ShowerGuardConfig::Lumi::to_eprom(std::ostream &os) const
-{
-    ldr.to_eprom(os);
-    os.write((const char *)&corr, sizeof(corr));
-    os.write((const char *)&threshold, sizeof(threshold));
-}
-
-bool ShowerGuardConfig::Lumi::from_eprom(std::istream &is)
-{
-    ldr.from_eprom(is);
-    is.read((char *)&corr, sizeof(corr));
-    is.read((char *)&threshold, sizeof(threshold));
-
-    return is_valid() && !is.bad();
-}
-
-void ShowerGuardConfig::Temp::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("channel"))
-    {
-        const JsonVariant &_json = json["channel"];
-        channel.from_json(_json);
+        const JsonVariant &_json = json["one_a"];
+        one_a.from_json(_json);
     }
 
-    if (json.containsKey("addr"))
+    if (json.containsKey("one_b"))
     {
-        addr = (const char *)json["addr"];
+        const JsonVariant &_json = json["one_b"];
+        one_b.from_json(_json);
     }
 
-    if (json.containsKey("corr"))
+    if (json.containsKey("open"))
     {
-        corr = json["corr"];
+        const JsonVariant &_json = json["open"];
+        open.from_json(_json);
+    }
+
+    if (json.containsKey("closed"))
+    {
+        const JsonVariant &_json = json["closed"];
+        closed.from_json(_json);
+    }
+
+    if (json.containsKey("valve_profile"))
+    {
+        valve_profile = (const char*) json["valve_profile"];
+    }
+
+    if (json.containsKey("default_value"))
+    {
+        default_value = (uint8_t)(int) json["default_value"];
     }
 }
 
-void ShowerGuardConfig::Temp::to_eprom(std::ostream &os) const
+void ProportionalConfig::Channel::to_eprom(std::ostream &os) const
 {
-    channel.to_eprom(os);
+    one_a.to_eprom(os);
+    one_b.to_eprom(os);
+    open.to_eprom(os);
+    closed.to_eprom(os);
 
-    uint8_t len = addr.length();
+    uint8_t len = valve_profile.length();
     os.write((const char *)&len, sizeof(len));
-
-    if (len)
-    {
-        os.write(addr.c_str(), len);
-    }
-
-    os.write((const char *)&corr, sizeof(corr));
+    os.write((const char *)valve_profile.c_str(), len);
+    os.write((const char *)&default_value, sizeof(default_value));
 }
 
-bool ShowerGuardConfig::Temp::from_eprom(std::istream &is)
+bool ProportionalConfig::Channel::from_eprom(std::istream &is)
 {
-    channel.from_eprom(is);
-    uint8_t len = 0;
+    clear();
 
+    one_a.from_eprom(is);
+    one_b.from_eprom(is);
+    open.from_eprom(is);
+    closed.from_eprom(is);
+
+    uint8_t len = 0;
     is.read((char *)&len, sizeof(len));
 
     if (len)
@@ -499,552 +301,760 @@ bool ShowerGuardConfig::Temp::from_eprom(std::istream &is)
         char buf[256];
         is.read(buf, len);
         buf[len] = 0;
-        addr = buf;
-    }
-    else
-    {
-        addr = "";
+        valve_profile = buf;
     }
 
-    is.read((char *)&corr, sizeof(corr));
+    is.read((char *)&default_value, sizeof(default_value));
 
     return is_valid() && !is.bad();
 }
 
-void ShowerGuardConfig::Light::from_json(const JsonVariant &json)
+void ProportionalConfig::ValveProfile::from_json(const JsonVariant &json)
 {
-    if (json.containsKey("channel"))
+    clear();
+
+    if (json.containsKey("open_time"))
     {
-        const JsonVariant &_json = json["channel"];
-        channel.from_json(_json);
+        open_time = json["open_time"];
     }
 
-    if (json.containsKey("mode"))
+    if (json.containsKey("time_2_flow_rate"))
     {
-        const char *mode_str = (const char *)json["mode"];
-        mode = str_2_mode(mode_str);
-    }
+        const JsonVariant &_json = json["time_2_flow_rate"];
 
-    if (json.containsKey("linger"))
-    {
-        linger = (unsigned)((int)json["linger"]);
-    }
-}
-
-void ShowerGuardConfig::Light::to_eprom(std::ostream &os) const
-{
-    channel.to_eprom(os);
-
-    uint8_t mode_uint8_t = (uint8_t)mode;
-    os.write((const char *)&mode_uint8_t, sizeof(mode_uint8_t));
-    os.write((const char *)&linger, sizeof(linger));
-}
-
-bool ShowerGuardConfig::Light::from_eprom(std::istream &is)
-{
-    channel.from_eprom(is);
-
-    uint8_t mode_uint8 = mAuto;
-    is.read((char *)&mode_uint8, sizeof(mode_uint8));
-    mode = Mode(mode_uint8);
-    is.read((char *)&linger, sizeof(linger));
-
-    return is_valid() && !is.bad();
-}
-
-void ShowerGuardConfig::Fan::from_json(const JsonVariant &json)
-{
-    Light::from_json(json);
-
-    if (json.containsKey("rh_on"))
-    {
-        rh_on = (uint8_t)(unsigned)json["rh_on"];
-    }
-    if (json.containsKey("rh_off"))
-    {
-        rh_off = (uint8_t)(unsigned)json["rh_off"];
-    }
-}
-
-void ShowerGuardConfig::Fan::to_eprom(std::ostream &os) const
-{
-    Light::to_eprom(os);
-    os.write((const char *)&rh_on, sizeof(rh_on));
-    os.write((const char *)&rh_off, sizeof(rh_off));
-}
-
-bool ShowerGuardConfig::Fan::from_eprom(std::istream &is)
-{
-    Light::from_eprom(is);
-
-    is.read((char *)&rh_on, sizeof(rh_on));
-    is.read((char *)&rh_off, sizeof(rh_off));
-
-    return is_valid() && !is.bad();
-}
-
-class ShowerGuardAlgo
-{
-public:
-    ShowerGuardAlgo()
-    {
-        init();
-    }
-
-    void start(const ShowerGuardConfig &config);
-    void stop() {}
-    void reconfigure(const ShowerGuardConfig &config);
-
-    void loop_once(float rh, float temp, bool motion);
-
-    bool get_light() const { return light; }
-    bool get_fan() const { return fan; }
-
-    String get_last_light_decision() const;
-    String get_last_fan_decision() const;
-
-    void debug_last_light_decision() const;
-    void debug_last_fan_decision() const;
-
-protected:
-    void init();
-
-    void reset_rh_window();
-    void update_rh_window(float rh);
-
-    bool is_soft_rh_toggle_down_condition() const;
-
-    bool light;
-    bool fan;
-
-    bool reset_rh_decision;
-    uint32_t last_motion_millis;
-    time_t last_motion_time;
-
-    float rh_sliding_window[10];
-    size_t rh_sliding_window_pos;
-
-    bool rh_toggle;
-
-    unsigned light_linger;
-    unsigned fan_linger;
-    unsigned rh_off, rh_on;
-    ShowerGuardConfig::Light::Mode light_mode;
-    ShowerGuardConfig::Light::Mode fan_mode;
-
-    String last_light_decision[2]; // 2 levels
-    String last_fan_decision[3];   // 3 levels
-};
-
-class ShowerGuardHandler
-{
-public:
-    static const unsigned TEMP_READ_SLOT = 60;
-    static const unsigned RH_READ_SLOT = 10;
-    static const unsigned LUMI_READ_SLOT = 5;
-    static const unsigned MOTION_HYS = 10;
-    static const unsigned LOGGING_SLOT = 60;
-
-    ShowerGuardHandler()
-    {
-        _is_active = false;
-        _is_finished = true;
-        aht10 = NULL;
-        ds18b20.setOneWire(&ow);
-    }
-
-    ~ShowerGuardHandler()
-    {
-        if (aht10)
+        if (_json.is<JsonArray>())
         {
-            delete aht10;
-            aht10 = NULL;
+            const JsonArray & jsonArray = _json.as<JsonArray>();
+            auto iterator = jsonArray.begin();
+
+            while(iterator != jsonArray.end())
+            {
+                const JsonVariant & __json = *iterator;
+
+                if (__json.is<JsonArray>())
+                {
+                    const JsonArray & _jsonArray = __json.as<JsonArray>();
+                    auto _iterator = _jsonArray.begin();
+
+                    uint8_t first = 255;
+                    uint8_t second = 255;
+
+                    if (_iterator != _jsonArray.end())
+                    {
+                        first = *_iterator;       
+                        ++_iterator;
+                    }
+
+                    if (_iterator != _jsonArray.end())
+                    {
+                        second = *_iterator;       
+                    }
+                
+                    if (first != 255 && second != 255)
+                    {
+                        time_2_flow_rate.push_back(std::make_pair(first, second));
+                    }
+                }
+
+                ++iterator;
+            }
+        }
+    }
+}
+
+void ProportionalConfig::ValveProfile::to_eprom(std::ostream &os) const
+{
+    os.write((const char *)&open_time, sizeof(open_time));
+
+    uint8_t len = time_2_flow_rate.size();
+    os.write((const char *)&len, sizeof(len));
+    
+    for (auto it=time_2_flow_rate.begin(); it!=time_2_flow_rate.end();++it)
+    {
+        os.write((const char *)(& (it->first)), sizeof(it->first));
+        os.write((const char *)(& (it->second)), sizeof(it->second));
+    }
+}
+
+bool ProportionalConfig::ValveProfile::from_eprom(std::istream &is)
+{
+    clear();
+
+    is.read((char *)&open_time, sizeof(open_time));
+
+    uint8_t len = 0;
+    is.read((char *)&len, sizeof(len));
+
+    if (len)
+    {
+        for (size_t i=0; i<len; ++i)
+        {
+            uint8_t first = 0;
+            uint8_t second = 0;
+            is.read((char *)&first, sizeof(first));
+            is.read((char *)&second, sizeof(second));
+            time_2_flow_rate.push_back(std::make_pair(first, second));
         }
     }
 
-    bool is_active() const { return _is_active; }
+    return is_valid() && !is.bad();
+}
 
-    void start(const ShowerGuardConfig &config);
-    void stop();
-    void reconfigure(const ShowerGuardConfig &config);
 
-    ShowerGuardStatus get_status()
+class ChannelHandler
+{
+public:
+
+    ChannelHandler()
     {
-        ShowerGuardStatus _status;
+        _is_active = false;
+
+        actuate_ref = 255;
+        actuate_ms = 0;
+    }
+
+    ~ChannelHandler()
+    {
+    }
+
+    bool is_active() const { return _is_active; }
+    bool is_idle() const { return status.state == ProportionalStatus::Channel::sIdle; }
+
+    void start(const ProportionalConfig::Channel &_config, const ProportionalConfig::ValveProfile &_valve_profile);
+    void stop();
+    void reconfigure(const ProportionalConfig::Channel &_config);
+    void set_valve_profile(const ProportionalConfig::ValveProfile &_valve_profile);
+    const ProportionalConfig::Channel & get_config() const { return config; }
+
+    ProportionalStatus::Channel get_status()
+    {
+        ProportionalStatus::Channel _status;
 
         {
             Lock lock(semaphore);
+            status.config_open_time = valve_profile.open_time * 1000; // ms
             _status = status;
         }
 
         return _status;
     }
 
-    static unsigned analog_read(uint8_t gpio);
+    String calibrate();
+    String actuate(uint8_t value);
 
 protected:
+
     void configure_hw();
-    void configure_hw_rh();
-    void configure_hw_temp();
-    static void configure_hw_motion(const ShowerGuardConfig::Motion &motion);
-    static void configure_hw_lumi(const ShowerGuardConfig::Lumi &lumi);
-    static void configure_hw_light(const ShowerGuardConfig::Light &light);
-    static void configure_hw_fan(const ShowerGuardConfig::Fan &fan);
 
-    float read_rh(float temp);
-    bool read_temp(float &temp);
-    static bool read_motion(const ShowerGuardConfig::Motion &motion);
-    static float read_lumi(const ShowerGuardConfig::Lumi &lumi);
+    static void write_one(const ProportionalConfig::Channel & config, bool a_value, bool b_value);
+    static bool read(const DigitalInputChannelConfig & config);
 
-    static void write_light(const ShowerGuardConfig::Light &light, bool value);
-    static void write_fan(const ShowerGuardConfig::Fan &fan, bool value);
+    static void calibration_task(void *parameter);
+    static void actuation_task(void *parameter);
+
+    BinarySemaphore semaphore;
+    ProportionalConfig::Channel config;
+    ProportionalConfig::ValveProfile valve_profile;
+    ProportionalStatus::Channel status;
+    bool _is_active;
+
+    uint8_t actuate_ref;
+    uint32_t actuate_ms;
+};
+
+class ProportionalHandler
+{
+public:
+
+    struct ActionAndValue
+    {
+        enum Action
+        {
+            aNone = 0,
+            aCalibrate = 1,
+            aActuate = 2
+        };
+
+        ActionAndValue()
+        {
+            action = aNone;
+            value = 255;
+        }
+
+        ActionAndValue(Action _action, uint8_t _value = 255) : action(_action), value(_value)
+        {
+        }
+
+        Action action;
+        uint8_t value;
+    };
+
+    ProportionalHandler()
+    {
+        _is_active = false;
+        _is_finished = true;
+    }
+
+    ~ProportionalHandler()
+    {
+        delete_all_channel_handlers();
+    }
+
+    bool is_active() const { return _is_active; }
+
+    void start(const ProportionalConfig &config);
+    void stop();
+    void reconfigure(const ProportionalConfig &config);
+
+    ProportionalStatus get_status()
+    {
+        ProportionalStatus _status;
+
+        {
+            Lock lock(semaphore);
+
+            status.channels.clear();
+
+            for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
+            {
+                status.channels.push_back((*it)->get_status());
+            }
+
+            _status = status;
+        }
+
+        return _status;
+    }
+
+    String calibrate(size_t channel);
+    String actuate(size_t channel, uint8_t value);
+
+    void configure_channels();
+    void update_valve_profiles();
+
+    size_t get_num_channels() const
+    {
+        return channel_handlers.size();
+    }
+
+protected:
+
+    void delete_all_channel_handlers();
 
     static void task(void *parameter);
 
     BinarySemaphore semaphore;
-    ShowerGuardConfig config;
-    ShowerGuardStatus status;
+    ProportionalConfig config;
+    ProportionalStatus status;
     bool _is_active;
     bool _is_finished;
 
-    OneWire ow;
-    DallasTemperature ds18b20;
-    AHT10 * aht10;
-
-    ShowerGuardAlgo algo;
+    std::vector<ChannelHandler*> channel_handlers;
+    std::deque<std::pair<int, ActionAndValue>> action_queue;
 };
 
-static ShowerGuardHandler handler;
+static ProportionalHandler handler;
 
-void ShowerGuardAlgo::start(const ShowerGuardConfig &config)
+void ChannelHandler::start(const ProportionalConfig::Channel &_config, 
+                           const ProportionalConfig::ValveProfile &_valve_profile)
 {
-    init();
-    reconfigure(config);
-}
-
-void ShowerGuardAlgo::reconfigure(const ShowerGuardConfig &config)
-{
-    light_linger = config.light.linger;
-    fan_linger = config.fan.linger;
-
-    rh_off = config.fan.rh_off;
-    rh_on = config.fan.rh_on;
-    light_mode = config.light.mode;
-    fan_mode = config.fan.mode;
-
-    reset_rh_window();
-}
-
-void ShowerGuardAlgo::loop_once(float rh, float temp, bool motion)
-{
-    // run algo even if there are overrides to fan and light (mode not auto)
-
-    char buf[128];
-
-    uint32_t now_millis = millis();
-
-    time_t now_time;
-    time(&now_time);
-
-    update_rh_window(rh);
-
-    bool motion_light = false;
-    bool motion_fan = false;
-
-    if (reset_rh_decision) // running first time after init
-    {
-        motion = true; // imitate initial motion to put on everything
-
-        unsigned rh_middle = rh_off + (rh_on - rh_off) / 2;
-
-        if (rh >= rh_middle)
-        {
-            rh_toggle = true;
-        }
-
-        sprintf(buf, "init %.1f/%.1f (middle) at %s", rh, (float)rh_middle, time_t_2_str(now_time).c_str());
-        last_fan_decision[0] = buf;
-
-        reset_rh_decision = false;
-    }
-
-    if (motion)
-    {
-        motion_light = true;
-        motion_fan = true;
-        last_motion_millis = now_millis;
-        last_motion_time = now_time;
-    }
-    else
-    {
-        if (((now_millis - last_motion_millis) / 1000) < light_linger)
-        {
-            motion_light = true;
-        }
-
-        if (((now_millis - last_motion_millis) / 1000) < fan_linger)
-        {
-            motion_fan = true;
-        }
-    }
-
-    if (motion_light == true)
-    {
-        sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), light_linger);
-        last_light_decision[0] = buf;
-    }
-    else 
-    {
-        last_light_decision[0] = "linger out";
-    }
-
-    light = motion_light;
-
-    bool last_rh_toggle = rh_toggle;
-
-    if (rh >= rh_on)
-    {
-        if (rh_toggle == false)
-        {
-            rh_toggle = true;
-            sprintf(buf, "rh-high %.1f/%.1f at %s", rh, (float)rh_on, time_t_2_str(now_time).c_str());
-            last_fan_decision[0] = buf;
-        }
-    }
-    else if (rh <= rh_off)
-    {
-        if (rh_toggle == true)
-        {
-            rh_toggle = false;
-            sprintf(buf, "rh-low %.1f/%.1f at %s", rh, (float)rh_off, time_t_2_str(now_time).c_str());
-            last_fan_decision[0] = buf;
-        }
-    }
-    else
-    {
-        if (rh_toggle == true)
-        {
-            if (is_soft_rh_toggle_down_condition())
-            {
-                TRACE("Soft rh_toggle condition")
-                rh_toggle = false;
-                sprintf(buf, "rh-soft-down at %s", time_t_2_str(now_time).c_str());
-                last_fan_decision[0] = buf;
-
-                DEBUG("rh_sliding_window at rh_toggle condition")
-                String dbg_str;
-
-                for (int i=0;i<sizeof(rh_sliding_window)/sizeof(rh_sliding_window[0]);++i)
-                {    
-                    if (i > 0)
-                    {
-                        dbg_str += ",";
-                    }
-                    dbg_str += rh_sliding_window[i];
-                }
-                DEBUG("[%s]", dbg_str.c_str())
-            }
-        }
-    }
-
-    if (last_rh_toggle != rh_toggle)
-    {
-        // DEBUG("rh_toggle=%d", (int) rh_toggle)
-    }
-
-    if (motion_fan == true)
-    {
-        //if (fan == false)
-        //{
-            fan = true;
-            sprintf(buf, "motion at %s (+%d s)", time_t_2_str(last_motion_time).c_str(), fan_linger);
-            last_fan_decision[1] = buf;
-        //}
-    }
-    else
-    {
-        if (last_fan_decision[1].length() > 0)
-        {
-            last_fan_decision[1] = "";
-        }
-        fan = rh_toggle;
-    }
-
-    if (light_mode != ShowerGuardConfig::Light::mAuto)
-    {
-        light = light_mode == ShowerGuardConfig::Light::mOn ? true : false;
-        last_light_decision[1] = "nonauto-mode";
-    }
-    else
-    {
-        last_light_decision[1] = "";
-    }
-
-    if (fan_mode != ShowerGuardConfig::Fan::mAuto)
-    {
-        fan = fan_mode == ShowerGuardConfig::Fan::mOn ? true : false;
-        last_fan_decision[2] = "nonauto-mode";
-    }
-    else
-    {
-        last_fan_decision[2] = "";
-    }
-}
-
-String ShowerGuardAlgo::get_last_light_decision() const
-{
-    for (int i = sizeof(last_light_decision) / sizeof(last_light_decision[0]) - 1; i >= 0; --i)
-    {
-        if (!last_light_decision[i].isEmpty())
-        {
-            return last_light_decision[i];
-        }
-    }
-
-    return String("");
-}
-
-String ShowerGuardAlgo::get_last_fan_decision() const
-{
-    for (int i = sizeof(last_fan_decision) / sizeof(last_fan_decision[0]) - 1; i >= 0; --i)
-    {
-        if (!last_fan_decision[i].isEmpty())
-        {
-            return last_fan_decision[i];
-        }
-    }
-
-    return String("");
-}
-
-void ShowerGuardAlgo::debug_last_light_decision() const
-{
-    DEBUG("last_light_decision:")
-
-    for (int i = sizeof(last_light_decision) / sizeof(last_light_decision[0]) - 1; i >= 0; --i)
-    {
-        if (!last_light_decision[i].isEmpty() || i==0)
-        {
-            DEBUG("[%d]=%s", i, last_light_decision[i].c_str())
-        }
-    }
-}
-
-void ShowerGuardAlgo::debug_last_fan_decision() const
-{
-    DEBUG("last_fan_decision:")
-
-    for (int i = sizeof(last_fan_decision) / sizeof(last_fan_decision[0]) - 1; i >= 0; --i)
-    {
-        if (!last_fan_decision[i].isEmpty() || i==0)
-        {
-            DEBUG("[%d]=%s", i, last_fan_decision[i].c_str())
-        }
-    }
-}
-
-void ShowerGuardAlgo::init()
-{
-    light = false;
-    fan = false;
-    reset_rh_decision = true;
-    last_motion_millis = 0;
-    time(&last_motion_time);
-    rh_toggle = false;
-    reset_rh_window();
-
-    light_linger = 0;
-    fan_linger = 0;
-    rh_off = 0;
-    rh_on = 0;
-    light_mode = ShowerGuardConfig::Light::mAuto;
-    fan_mode = ShowerGuardConfig::Light::mAuto;
-
-    for (size_t i = 1; i < sizeof(last_light_decision) / sizeof(last_light_decision[0]); ++i)
-    {
-        last_light_decision[i] = "";
-    }
-
-    for (size_t i = 1; i < sizeof(last_fan_decision) / sizeof(last_fan_decision[0]); ++i)
-    {
-        last_fan_decision[i] = "";
-    }
-
-    last_light_decision[0] = "init";
-    last_fan_decision[0] = "init";
-}
-
-void ShowerGuardAlgo::reset_rh_window()
-{
-    //for (int i=0;i<sizeof(rh_avg_window)/sizeof(rh_avg_window[0]);++i)
-    //    rh_avg_window[i] = 0;
-
-    // rh_avg_window_pos = 0;
-
-    //for (int i=0;i<sizeof(rh_sliding_window)/sizeof(rh_sliding_window[0]);++i)
-    //    rh_sliding_window[i] = 0;
-
-    rh_sliding_window_pos = 0;
-}
-
-void ShowerGuardAlgo::update_rh_window(float rh)
-{
-    // add average to sliding window. if sliding window is full - shift left and add to the end
-
-    if (rh_sliding_window_pos < sizeof(rh_sliding_window) / sizeof(rh_sliding_window[0]))
-    {
-        rh_sliding_window[rh_sliding_window_pos] = rh;
-        rh_sliding_window_pos++;
-    }
-    else
-    {
-        for (int i = 0; i < sizeof(rh_sliding_window) / sizeof(rh_sliding_window[0]) - 1; ++i)
-            rh_sliding_window[i] = rh_sliding_window[i + 1];
-
-        rh_sliding_window[sizeof(rh_sliding_window) / sizeof(rh_sliding_window[0]) - 1] = rh;
-    }
-
-    /*
-    DEBUG("rh_sliding_window updated")
-    String dbg_str;
-
-    for (int i=0;i<sizeof(rh_sliding_window)/sizeof(rh_sliding_window[0]);++i)
-    {    
-        if (i > 0)
-        {
-            dbg_str += ",";
-        }
-        dbg_str += rh_sliding_window[i];
-    }
-    DEBUG("[%s]", dbg_str.c_str())
-    */
-}
-
-bool ShowerGuardAlgo::is_soft_rh_toggle_down_condition() const
-{
-    // current condition for soft toggling down of rh_switch is that the sliding window is fully filled and
-    // all its values are under the lowest 10 %of the span rh_off -> rh_on
-
-    if (rh_sliding_window_pos == sizeof(rh_sliding_window) / sizeof(rh_sliding_window[0])) // sliding window is fully filled
-    {
-        float upper = rh_off + float(rh_on - rh_off) / 10.0;
-
-        for (int i = 0; i < sizeof(rh_sliding_window) / sizeof(rh_sliding_window[0]); ++i)
-        {
-            if (rh_sliding_window[i] > upper)
-                return false;
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-void ShowerGuardHandler::start(const ShowerGuardConfig &_config)
-{
+    TRACE("ChannelHandler::start, status %s", status.as_string().c_str())
+ 
     if (_is_active)
     {
+        ERROR("attempt to start a channel that is already active, %s", _config.as_string().c_str())
+    }
+    else
+    {
+        // wait for calibration or actuation of proevious active time to abort (running->stop->start situation)
+
+        while(status.state == ProportionalStatus::Channel::sCalibrating || 
+                status.state == ProportionalStatus::Channel::sActuating)
+        {
+            delay(100);
+        }
+
+        TRACE("starting channel %s", _config.as_string().c_str())
+        
+        config = _config;
+        
+        status.reset();
+        status.state = ProportionalStatus::Channel::sIdle;
+        status.value = config.default_value;
+
+        configure_hw();
+
+        valve_profile = _valve_profile;
+
+        _is_active = true;
+    }
+
+    TRACE("ChannelHandler::start returns, status %s", status.as_string().c_str())
+}
+
+void ChannelHandler::stop()
+{
+    TRACE("ChannelHandler::stop channel %s, status %s", config.as_string().c_str(), status.as_string().c_str())
+
+    _is_active = false; // this should trigger aborting possible calibration or actuation
+
+    while(status.state == ProportionalStatus::Channel::sCalibrating || 
+            status.state == ProportionalStatus::Channel::sActuating)
+    {
+        delay(100);
+    }
+
+    write_one(config, false, false);  // just in case
+
+    status.reset();
+    config.clear();
+
+    TRACE("ChannelHandler::stop returns, status %s", status.as_string().c_str())
+}
+
+void ChannelHandler::reconfigure(const ProportionalConfig::Channel &_config)
+{
+    TRACE("ChannelHandler::reconfigure, status %s", status.as_string().c_str())
+    TRACE("config from %s to %s", config.as_string().c_str(),_config.as_string().c_str())
+
+    if (!(config == _config))
+    {
+        TRACE("channel: config changed")
+
+        _is_active = false;
+
+        while(status.state == ProportionalStatus::Channel::sCalibrating || 
+                status.state == ProportionalStatus::Channel::sActuating)
+        {
+            delay(100);
+        }
+
+        config = _config;
+        
+        status.reset();
+        status.state = ProportionalStatus::Channel::sIdle;
+        status.value = config.default_value;
+
+        configure_hw();
+
+        _is_active = true;
+    }
+    TRACE("ChannelHandler::reconfigure returns, status %s", status.as_string().c_str())
+}
+
+void ChannelHandler::set_valve_profile(const ProportionalConfig::ValveProfile &_valve_profile)
+{
+    if (!(valve_profile == _valve_profile))
+    {
+        valve_profile = _valve_profile;
+    }
+}
+
+String ChannelHandler::calibrate()
+{
+    TRACE("ChannelHandler::calibrate, status %s", status.as_string().c_str())
+    String r;
+
+    if (_is_active == true)
+    {
+       // manual calibration should be done on explicitly idle channel
+
+       if (status.state == ProportionalStatus::Channel::sCalibrating)
+       {
+            return r;  // calibration already ongoing
+       }
+
+       if (status.state == ProportionalStatus::Channel::sActuating)
+       {
+            r = "Channel busy";
+            ERROR("Request to calibrate, channel busy")
+       }
+       else
+       {
+            status.state = ProportionalStatus::Channel::sCalibrating;
+
+            TRACE("starting calibration task")
+
+            xTaskCreate(
+                calibration_task,      // Function that should be called
+                "calibration",         // Name of the task (for debugging)
+                8192,                  // Stack size (bytes)
+                this,                  // Parameter to pass
+                1,                     // Task priority
+                NULL                   // Task handle
+            );
+       }
+    }
+    else
+    {
+        r = "Channel not active";
+        ERROR("Request to calibrate, channel not active")
+    }
+
+    TRACE("ChannelHandler::calibrate returns, status %s", status.as_string().c_str())
+    return r;
+}
+
+String ChannelHandler::actuate(uint8_t value)
+{
+    TRACE("ChannelHandler::actuate, value %d, status %s", (int) value, status.as_string().c_str())
+    String r;
+
+    if (_is_active == true)
+    {
+        // actuation should be possible at any time
+        // if calibration is ongoing - then actuation will always be done afterwards
+        // if another actuation is ongoing - then the task will check at the end and restart actuation if the
+        // new value is different from its former target value
+
+        {Lock lock(semaphore);
+        status.value = value; } 
+
+        // theoretically there could be a slight chance that we fall between the chairs and
+        // do not start new actuation at exact moment the one which is ongoing finishes
+        // TODO?
+
+        if (status.state == ProportionalStatus::Channel::sIdle)
+        {
+            status.state = ProportionalStatus::Channel::sActuating;
+
+            TRACE("starting actuation task")
+
+            xTaskCreate(
+                actuation_task,        // Function that should be called
+                "actuation",           // Name of the task (for debugging)
+                4096,                  // Stack size (bytes)
+                this,                  // Parameter to pass
+                1,                     // Task priority
+                NULL                   // Task handle
+            );
+       }
+    }
+    else
+    {
+        r = "Channel not active";
+    }
+
+    TRACE("ChannelHandler::actuate returns, status %s", status.as_string().c_str())
+    return r;
+}
+
+void ChannelHandler::configure_hw()
+{
+    // ignore debounce, the circuit contains schmidt trigger that should fix the dribble
+
+    TRACE("configure open: gpio=%d, inverted=%d", (int)config.open.gpio, (int)config.open.inverted)
+    gpioHandler.setupChannel(config.open.gpio, INPUT_PULLUP, config.open.inverted, NULL);
+
+    TRACE("configure closed: gpio=%d, inverted=%d", (int)config.closed.gpio, (int)config.closed.inverted)
+    gpioHandler.setupChannel(config.closed.gpio, INPUT_PULLUP, config.closed.inverted, NULL);
+
+    write_one(config, false, false);
+
+    TRACE("configure one_a: gpio=%d, inverted=%d", (int)config.one_a.gpio, (int)config.one_a.inverted)
+    gpioHandler.setupChannel(config.one_a.gpio, OUTPUT, config.one_a.inverted, NULL);
+
+    TRACE("configure one_b: gpio=%d, inverted=%d", (int)config.one_b.gpio, (int)config.one_b.inverted)
+    gpioHandler.setupChannel(config.one_b.gpio, OUTPUT, config.one_b.inverted, NULL);
+}
+
+void ChannelHandler::write_one(const ProportionalConfig::Channel & config, bool a_value, bool b_value)
+{
+    // avoid using non-static functions of gpiochannel to skip thread synchronisation
+
+    GpioChannel::write(config.one_a.gpio, config.one_a.inverted, a_value);
+    GpioChannel::write(config.one_b.gpio, config.one_b.inverted, b_value);
+
+    DEBUG("write_one (a=%s, b=%s)", a_value ? "true":"false", b_value ? "true":"false")
+}
+
+bool ChannelHandler::read(const DigitalInputChannelConfig & config)
+{
+    // avoid using non-static functions of gpiochannel to skip thread synchronisation
+
+    return GpioChannel::read(config.gpio, config.inverted);
+}
+
+void ChannelHandler::calibration_task(void *parameter)
+{
+    ChannelHandler *_this = (ChannelHandler *)parameter;
+
+    TRACE("calibration_task started, status %s", _this->status.as_string().c_str())
+
+    // try to minimize go-time by either going to another end-state if the motor is in one of the end-states
+    // or making to end-state + open-close cycle so that we end up closest to the value 
+
+    size_t timeout_seconds = 30;
+
+    if (_this->status.config_open_time != 0)
+    {
+        timeout_seconds = _this->status.config_open_time * 2;    
+    }
+
+    DEBUG("calibration timeout set to %d seconds", (int) timeout_seconds)
+
+    size_t num_passes = 3;
+
+    uint8_t run_to[3];
+    uint32_t milliseconds[3];
+    
+    bool is_open = read(_this->config.open);
+    bool is_closed = read(_this->config.closed);
+
+    #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+    if (is_open == true || is_closed == true)
+    {
+        num_passes = 2;
+
+        if (is_open == true)
+        {
+            run_to[0] = 0;
+            run_to[1] = 100;
+        }
+        else
+        {
+            run_to[0] = 100;
+            run_to[1] = 0;
+        }
+    }
+    else
+    {
+        num_passes = 3;
+
+        if (_this->status.value > 50)
+        {
+            run_to[0] = 100;
+            run_to[1] = 0;
+            run_to[2] = 100;
+        }
+        else
+        {
+            run_to[0] = 0;
+            run_to[1] = 100;
+            run_to[2] = 0;
+        }
+    }
+
+    #else
+
+    if (is_open == true || is_closed == true)
+    {
+        num_passes = 1;
+
+        if (is_open == true)
+        {
+            run_to[0] = 0;
+        }
+        else
+        {
+            run_to[0] = 100;
+        }
+    }
+    else
+    {
+        num_passes = 2;
+
+        if (_this->status.value > 50)
+        {
+            run_to[0] = 0;
+            run_to[1] = 100;
+        }
+        else
+        {
+            run_to[0] = 100;
+            run_to[1] = 0;
+        }
+    }
+
+    #endif // ASYMMETRICAL_OPEN_CLOSE
+
+    int pass = 0;
+    bool is_error = false;
+
+    DEBUG("before calibration, open=%d, closed=%d", (int)read(_this->config.open), (int)read(_this->config.closed))
+
+    while(pass < num_passes)
+    {
+        TRACE("calibration pass %d, run_to %d", pass, (int) run_to[pass])
+
+        uint32_t t_begin = millis();
+        DigitalInputChannelConfig wait_on;
+
+        if (run_to[pass] == 100)
+        {
+            wait_on = _this->config.open;
+        }
+        else
+        {
+            wait_on = _this->config.closed;
+        }
+
+        bool ready = read(wait_on);
+
+        if (ready == false)
+        {
+            if (run_to[pass] == 100)
+            {
+                write_one(_this->config, true, false);
+            }
+            else
+            {
+                write_one(_this->config, false, true);
+            }
+        }
+
+        size_t c_count = 0;
+
+        while(_this->_is_active == true)
+        {
+            if (ready == true)
+            {
+                break;
+            }
+
+            delay(1);
+            ready = read(wait_on);
+
+            if (c_count % 300 == 0)
+            {
+                unsigned long t_probe = millis();
+                unsigned long time_passed = 0;
+                if (t_begin < t_probe)
+                {
+                    time_passed = t_probe - t_begin;
+                }
+                else
+                {
+                    time_passed = t_probe + (ULONG_MAX - t_begin);
+                }
+
+                if (time_passed > timeout_seconds * 1000)
+                {
+                    ERROR("calibration timeout detected")
+                    break;
+                }
+            }
+            
+            c_count ++;
+        }
+
+        write_one(_this->config, false, false);
+
+        if (_this->_is_active == false)
+        {
+            break;
+        }
+        
+        if (ready == false)
+        {
+            is_error = true;
+            break;
+        }
+
+        unsigned long t_end = millis();
+
+        if (t_begin < t_end)
+        {
+            milliseconds[pass] = t_end - t_begin;
+        }
+        else
+        {
+            milliseconds[pass] = t_end + (ULONG_MAX - t_begin);
+        }
+
+        TRACE("milliseconds %d", (int) milliseconds[pass])
+        pass++;
+    }
+
+    {Lock lock(_this->semaphore);
+
+    if (is_error == true || _this->_is_active == false)
+    {
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        _this->status.calib_closed_2_open_time = 0;
+        _this->status.calib_open_2_closed_time = 0;
+
+        #else
+
+        _this->status.calib_open_time = 0;
+
+        #endif // ASYMMETRICAL_OPEN_CLOSE
+
+        _this->actuate_ref = 255;
+
+        if (is_error == true)
+        {
+            _this->status.error = "calibration error";
+            ERROR("calibration error")
+        }
+    }
+    else
+    {
+        _this->status.error.clear();
+
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        if (num_passes == 3)
+        {
+            _this->status.calib_open_2_closed_time = run_to[1] == 0 ? milliseconds[1] : milliseconds[2];
+            _this->status.calib_closed_2_open_time = run_to[1] == 100 ? milliseconds[1] : milliseconds[2];
+
+            _this->actuate_ref = run_to[2];
+        }
+        else
+        {
+            _this->status.calib_open_2_closed_time = run_to[0] == 0 ? milliseconds[0] : milliseconds[1];
+            _this->status.calib_closed_2_open_time = run_to[0] == 100 ? milliseconds[0] : milliseconds[1];
+
+            _this->actuate_ref = run_to[1];
+        }
+
+        #else
+
+        if (num_passes == 2)
+        {
+            _this->status.calib_open_time = milliseconds[1];
+            _this->actuate_ref = run_to[1];
+        }
+        else
+        {
+            _this->status.calib_open_time = milliseconds[0];
+            _this->actuate_ref = run_to[0];
+        }
+
+        #endif // ASYMMETRICAL_OPEN_CLOSE
+    }
+
+    _this->actuate_ms = 0;
+    _this->status.state = ProportionalStatus::Channel::sIdle; }
+
+    TRACE("calibration_task: terminated, status %s", _this->status.as_string().c_str())
+    vTaskDelete(NULL);
+}
+
+void ChannelHandler::actuation_task(void *parameter)
+{
+    ChannelHandler *_this = (ChannelHandler *)parameter;
+
+    TRACE("actuation_task started, status %s", _this->status.as_string().c_str())
+
+    delay(1000);
+
+    _this->status.state = ProportionalStatus::Channel::sIdle;
+
+    TRACE("actuation_task: terminated, status %s", _this->status.as_string().c_str())
+    vTaskDelete(NULL);
+}
+
+void ProportionalHandler::start(const ProportionalConfig &_config)
+{
+    TRACE("starting proportional handler")
+
+    if (_is_active)
+    {
+        ERROR("proportional handler already running")
         return; // already running
     }
 
@@ -1054,15 +1064,18 @@ void ShowerGuardHandler::start(const ShowerGuardConfig &_config)
     }
 
     config = _config;
-    configure_hw();
-    algo.start(config);
+
+    configure_channels();
+    // update_valve_profiles();  // already included in configure_channels
 
     _is_active = true;
     _is_finished = false;
 
+    TRACE("starting proportional handler task")
+
     xTaskCreate(
         task,                // Function that should be called
-        "shower_guard_task", // Name of the task (for debugging)
+        "proportional_task", // Name of the task (for debugging)
         4096,                // Stack size (bytes)
         this,                // Parameter to pass
         1,                   // Task priority
@@ -1070,11 +1083,12 @@ void ShowerGuardHandler::start(const ShowerGuardConfig &_config)
     );
 }
 
-void ShowerGuardHandler::stop()
+void ProportionalHandler::stop()
 {
+    TRACE("stopping proportional handler")
+
     if (_is_active)
     {
-        algo.stop();
     }
 
     _is_active = false;
@@ -1083,616 +1097,321 @@ void ShowerGuardHandler::stop()
     {
         delay(100);
     }
+
+    action_queue.clear(); // just in case
+    delete_all_channel_handlers();
 }
 
-void ShowerGuardHandler::reconfigure(const ShowerGuardConfig &_config)
+void ProportionalHandler::reconfigure(const ProportionalConfig &_config)
 {
     Lock lock(semaphore);
 
     if (!(config == _config))
     {
-        TRACE("shower_guard_task: config changed")
+        TRACE("proportional_task: config changed")
+
+        bool should_configure_channels = config.channels == _config.channels  ? false : true;
+        bool should_update_valve_profiles = config.valve_profiles == _config.valve_profiles  ? false : true;
+
         config = _config;
-        configure_hw();
-        algo.reconfigure(config);
+
+        if (should_configure_channels)
+        {
+            configure_channels();
+        }
+        else
+        {
+            if (should_update_valve_profiles)
+            {
+                update_valve_profiles();
+            }
+        }
     }
 }
 
-void ShowerGuardHandler::task(void *parameter)
+void ProportionalHandler::task(void *parameter)
 {
-    ShowerGuardHandler *_this = (ShowerGuardHandler *)parameter;
+    ProportionalHandler *_this = (ProportionalHandler *)parameter;
 
-    TRACE("shower_guard_task: started")
+    TRACE("proportional_task: started")
 
-    unsigned temp_read_slot_count = 0;
-    unsigned rh_read_slot_count = 0;
-    unsigned lumi_read_slot_count = 0;
-    unsigned logging_slot_count = 0;
-
-    float rh = 60.0;
-
-    // we average several samples and feed in algo once per average ready; this is because a considerable fluctuation of readings
-
-    float rh_avg_window[5];
-    size_t rh_avg_window_pos = 0;
-
-    float temp = 20.0;
-
-    float luminance_percent = 0;
-    bool light_luminance_mask = true;
-
-    // here is a short hysteresis loop for motion since the sensor would reset to 0 after its internal timeout even if the
-    // motion continues
-
-    bool fan = false;
-    bool light = false;
-
-    bool motion_hys = false;
-    bool motion = false;
-    unsigned motion_hys_count = 0;
-    ShowerGuardStatus status_copy;
+    uint32_t tmp=0;
 
     while (_this->_is_active)
     {
-        bool do_algo_loop = false;
+        #ifdef USE_ACTION_QUEUE
 
+        { Lock lock(_this->semaphore);
+
+        if (_this->action_queue.empty() == false)
         {
-            Lock lock(_this->semaphore);
+            bool all_are_idle = true;
 
-            if (temp_read_slot_count == 0)
+            for (auto it=_this->channel_handlers.begin(); it!=_this->channel_handlers.end(); ++it)
             {
-                float last_temp = temp;
-
-                if (_this->read_temp(temp))
+                if ((*it)->is_idle() == false)
                 {
-                    temp_read_slot_count = TEMP_READ_SLOT - 1;
-                    //DEBUG("read temp=%f", temp)
+                    all_are_idle = false;
+                    break;
+                }
+            }
 
-                    if (abs(last_temp - temp) >= 0.1)
+            if (all_are_idle == true)
+            {
+                auto action = _this->action_queue.front();
+                _this->action_queue.pop_front();
+
+                DEBUG("proportional task pop action from queue: channel %d, action %d, value %d",
+                      (int) action.first, (int) action.second.action, (int) action.second.value)
+
+                if (action.first >= 0 && action.first < _this->channel_handlers.size())
+                {
+                    if (action.second.action == ActionAndValue::aCalibrate)
                     {
-                        logging_slot_count = 0;
+                        _this->channel_handlers[action.first]->calibrate();
+                    }
+                    else if (action.second.action == ActionAndValue::aActuate)
+                    {
+                        _this->channel_handlers[action.first]->actuate(action.second.value);
                     }
                 }
-                // else try again next slot
             }
-            else
-            {
-                temp_read_slot_count--;
-            }
+        }}
 
-            if (rh_read_slot_count == 0)
-            {
-                float i_rh = _this->read_rh(temp);
-                rh_read_slot_count = RH_READ_SLOT - 1;
-                //DEBUG("read rh=%f", rh)
+        #endif // USE_ACTION_QUEUE
 
-                rh_avg_window[rh_avg_window_pos] = i_rh;
-                rh_avg_window_pos++;
 
-                if (rh_avg_window_pos == sizeof(rh_avg_window) / sizeof(rh_avg_window[0]))
-                {
-                    rh_avg_window_pos = 0;
-
-                    float new_rh = 0;
-
-                    for (int i = 0; i < sizeof(rh_avg_window) / sizeof(rh_avg_window[0]); ++i)
-                        new_rh += rh_avg_window[i];
-
-                    new_rh /= sizeof(rh_avg_window) / sizeof(rh_avg_window[0]);
-
-                    new_rh = round(new_rh * 10.0) / 10.0;
-
-                    if (abs(new_rh - rh) >= 1.0)
-                    {
-                        logging_slot_count = 0;
-                    }
-
-                    rh = new_rh;
-                    do_algo_loop = true;
-                    DEBUG("do_algo_loop rh")
-                }
-            }
-            else
-            {
-                if (CALIBRATE_RH)  // to make trace more often, this is calibration mode only
-                {
-                    _this->read_rh(temp);
-                }
-                rh_read_slot_count--;
-            }
-
-            if (lumi_read_slot_count == 0)
-            {
-                luminance_percent = _this->read_lumi(_this->config.lumi);
-                //DEBUG("luminance_percent %f", luminance_percent)
-                lumi_read_slot_count = LUMI_READ_SLOT - 1;
-            }
-            else
-            {
-                lumi_read_slot_count--;
-            }
-
-            bool last_motion_hys = motion_hys;
-            bool last_motion = motion;
-
-            motion = read_motion(_this->config.motion);
-
-            if (motion == 0)
-            {
-                if (motion_hys_count == 0)
-                {
-                    motion_hys = false;
-                }
-                else
-                {
-                    motion_hys_count--;
-                }
-            }
-            else
-            {
-                motion_hys = true;
-                motion_hys_count = MOTION_HYS - 1;
-            }
-
-            if (last_motion_hys != motion_hys || last_motion != motion)
-            {
-                DEBUG("motion=%d, motion_hys=%d", (int) motion, (int) motion_hys)
-
-                if (last_motion_hys != motion_hys)
-                {
-                    logging_slot_count = 0;
-                    do_algo_loop = true;
-                    DEBUG("do_algo_loop motion")
-                }
-            }
-
-            // because of rh averaging algo loop will be called regularly; but it can also be called when motion changes
-            // this will undermine the idea with sliding window in the algo somewhat but hopefully not affect it too much
-
-            if (do_algo_loop == true)
-            {
-                _this->algo.loop_once(rh, temp, motion_hys);
-
-                bool last_light = light;
-                bool last_fan = fan;
-
-                light = _this->algo.get_light();
-                fan = _this->algo.get_fan();
-
-                if (light != last_light)
-                {
-                    if (light == true)
-                    {
-                        if (_this->config.lumi.is_configured())
-                        {
-                            light_luminance_mask = luminance_percent < _this->config.lumi.threshold;
-                        }
-                        else
-                        {
-                            light_luminance_mask = true;   
-                        }
-                    }
-                    else
-                    {
-                        light_luminance_mask = true;   
-                    }
-
-                    //write_light(_this->config.light, light && light_luminance_mask);
-                }
-
-                if (fan != last_fan)
-                {
-                    //write_fan(_this->config.fan, fan);
-                }
-
-                if (last_light != light || last_fan != fan)
-                {
-                    //DEBUG("light=%d, fan=%d", (int) light, (int) fan)
-                    logging_slot_count = 0;
-                }
-            }
-
-            status_copy.temp = temp;
-            status_copy.rh = rh;
-            status_copy.motion = motion_hys;
-            status_copy.luminance_percent = luminance_percent;
-            status_copy.light_luminance_mask = light_luminance_mask;
-            status_copy.light = light;
-            status_copy.fan = fan;
-            status_copy.light_decision = _this->algo.get_last_light_decision();
-            status_copy.fan_decision = _this->algo.get_last_fan_decision();
-
-            _this->status = status_copy;
-        }
-
-        if (logging_slot_count == 0)
+        if (tmp%60 == 0)
         {
-            logging_slot_count = LOGGING_SLOT;
-
-            // moved it here from -- if now... != last... -- to also periodically write
-            // down the latest value in case we somehow miss to do it at value change (???)
-
-            write_fan(_this->config.fan, fan);
-            write_light(_this->config.light, light && light_luminance_mask);
-
-            //TRACE("light_decision length %d, is empty %d is NULL %d", (int) status_copy.light_decision.length(), (int)(status_copy.light_decision.isEmpty() == NULL ? 1 : 0), (int)(status_copy.light_decision.c_str() == NULL ? 1 : 0) )
-
-            TRACE("* {\"temp\":%.1f, \"rh\":%.1f, \"motion\":%d, \"luminance_percent\":%f, \"light_luminance_mask\":%d, "
-                  "\"light\":%d, \"fan\":%d, \"light_decision\":\"%s\", \"fan_decision\":\"%s\"}",
-                  temp, rh, (int)motion_hys, luminance_percent, (int) light_luminance_mask, (int)light, (int)fan, 
-                  status_copy.light_decision.c_str(), status_copy.fan_decision.c_str())
-
-            _this->algo.debug_last_light_decision();
-            _this->algo.debug_last_fan_decision();
-        }
-        else
-        {
-            logging_slot_count--;
+            //TRACE("proportional task peep")
         }
 
         delay(1000);
+        tmp++;
     }
 
+    _this->action_queue.clear();
     _this->_is_finished = true;
 
-    TRACE("shower_guard_task: terminated")
+    TRACE("proportional_task: terminated")
     vTaskDelete(NULL);
 }
 
-void ShowerGuardHandler::configure_hw()
+void ProportionalHandler::delete_all_channel_handlers()
 {
-    configure_hw_rh();
-    configure_hw_temp();
-    configure_hw_motion(config.motion);
-    configure_hw_lumi(config.lumi);
-    configure_hw_light(config.light);
-    configure_hw_fan(config.fan);
+    for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
+    {
+        (*it)->stop();
+        delete *it;
+    }
+
+    channel_handlers.clear();
 }
 
-void ShowerGuardHandler::configure_hw_rh()
+void ProportionalHandler::configure_channels()
 {
-    // configure rh
+    TRACE("configure channels")
 
-    if (aht10)
+    // Lock lock(semaphore);
+    
+    action_queue.clear();
+
+    // for channels - reuse existing channel handlers, do not kill and re-create
+
+    size_t cc = config.channels.size() < channel_handlers.size() ? config.channels.size() : channel_handlers.size();
+
+    auto it=channel_handlers.begin();  
+    
+    // configure matching count of channels / channel configs
+
+    if (cc > 0)    
     {
-        delete aht10;
-        aht10 = NULL;
-    }
+        TRACE("will reuse %d channels",(int) cc)
 
-    if (config.rh.hw == ShowerGuardConfig::Rh::hwHih5030)
-    {
-        TRACE("configure rh.vad: gpio=%d, atten=%d", (int)config.rh.vad.gpio, (int)config.rh.vad.atten)
-        analogSetPinAttenuation(config.rh.vad.gpio, (adc_attenuation_t)config.rh.vad.atten);
-        TRACE("configure rh.vdd: gpio=%d, atten=%d", (int)config.rh.vdd.gpio, (int)config.rh.vdd.atten)
-        analogSetPinAttenuation(config.rh.vdd.gpio, (adc_attenuation_t)config.rh.vdd.atten);
-    }
-    else if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
-    {
-        // this will only work once; if sda / scl are changed the target needs to be restarted!
-        TRACE("configure sda: gpio=%d, scl: gpio=%d", (int)config.rh.sda.gpio, (int)config.rh.scl.gpio)
-        Wire.begin(config.rh.sda.gpio,config.rh.scl.gpio); 
-
-        aht10 = new AHT10();  // addr is default and fixed, ignore from config?
-
-        if (aht10->begin() != true)
+        size_t i = 0;
+        auto dit = config.channels.begin();
+        
+        for (; i<cc; ++it, ++dit, ++i)
         {
-            ERROR("AHT10 not connected or fail to load calibration coefficient")
+            if (!((*it)->get_config() == *dit))
+            {
+                (*it)->reconfigure(*dit);
+
+                #ifdef USE_ACTION_QUEUE
+
+                DEBUG("push action to queue: channel %d, action aCalibrate", (int) i)
+                action_queue.push_back(std::make_pair(i, ActionAndValue(ActionAndValue::aCalibrate)));
+
+                #else
+
+                (*it)->calibrate();
+
+                #endif // USE_ACTION_QUEUE
+            }
+
+            //DEBUG("Checking valve profile")
+
+            if (!dit->valve_profile.isEmpty())
+            {
+                //DEBUG("valve profile not empty, %s",  dit->valve_profile.c_str())
+
+                auto vp = config.valve_profiles.find(dit->valve_profile);
+
+                if (vp != config.valve_profiles.end())
+                {
+                    TRACE("setting valve profile %s on channel %i", (*vp).first.c_str(), (int) i)
+                    (*it)->set_valve_profile((*vp).second);
+                }
+            }
         }
-        else
+    }
+
+    // note: the it will be used later in removing, if necessary
+
+    // add more channels if necessary
+
+    size_t mc = config.channels.size() > channel_handlers.size() ? config.channels.size()-channel_handlers.size() : 0;
+
+    if (mc > 0)
+    {
+        TRACE("will add  %d channels",(int) mc)
+
+        for (size_t i=0; i<mc; ++i)
         {
-            TRACE("AHT10 begin OK")
+            ProportionalConfig::ValveProfile valve_profile;
 
+            if (!config.channels[i+cc].valve_profile.isEmpty())
+            {
+                auto vp = config.valve_profiles.find(config.channels[i+cc].valve_profile);
+
+                if (vp != config.valve_profiles.end())
+                {
+                    TRACE("setting valve profile %s on channel %i", (*vp).first.c_str(), (int) i)
+                    valve_profile = (*vp).second;
+                }
+            }
+
+            ChannelHandler * channel_handler = new ChannelHandler();
+            channel_handler->start(config.channels[i+cc], valve_profile); 
+            channel_handlers.push_back(channel_handler);
+
+            #ifdef USE_ACTION_QUEUE
+
+            DEBUG("push action to queue: channel %d, action aCalibrate", (int) i)
+            action_queue.push_back(std::make_pair(i, ActionAndValue(ActionAndValue::aCalibrate)));
+
+            #else
+
+            (channel_handler)->calibrate();
+
+            #endif // USE_ACTION_QUEUE
+        }
+    }
+
+    // delete unused channels 
+
+    size_t lc = config.channels.size() < channel_handlers.size() ? channel_handlers.size()-config.channels.size() : 0;
+
+    if (lc > 0)
+    {
+        TRACE("will delete  %d channels",(int) lc)
+
+        for (size_t i=0; i<lc; ++i)
+        {
+            ChannelHandler * channel_handler = channel_handlers[cc+i];
+
+            channel_handler->stop();
+            delete channel_handler;
+        }
+        channel_handlers.erase(it, it+lc);
+    }
+}
+
+void ProportionalHandler::update_valve_profiles()
+{    
+    TRACE("update_valve_profiles")
+
+    size_t i=0;
+
+    for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it, ++i)        
+    {
+        auto channel_config = (*it)->get_config();
+
+        if (!channel_config.valve_profile.isEmpty())
+        {
+            auto vp = config.valve_profiles.find(channel_config.valve_profile);
+
+            if (vp != config.valve_profiles.end())
+            {
+                TRACE("setting valve profile %s on channel %i", (*vp).first.c_str(), (int) i)
+                (*it)->set_valve_profile((*vp).second);
+            }
         }
     }
 }
 
-void ShowerGuardHandler::configure_hw_temp()
+String ProportionalHandler::calibrate(size_t channel)
 {
-    // configure temp
+    TRACE("calibrate channel %d", (int) channel)
+    String r;
 
-    if (config.temp.channel.is_valid())
+    Lock lock(semaphore);
+
+    if (channel >= 0 && channel < channel_handlers.size())
     {
-        TRACE("configure temp: gpio=%d", (int)config.temp.channel.gpio)
+        #ifdef USE_ACTION_QUEUE
 
-        ow.begin(config.temp.channel.gpio);
-        ds18b20.setOneWire(&ow);
-        ds18b20.setWaitForConversion(true);
-        ds18b20.setCheckForConversion(true);
-    }
-}
+        DEBUG("push action to queue: channel %d, action aCalibrate", (int) channel)
+        action_queue.push_back(std::make_pair(channel, ActionAndValue(ActionAndValue::aCalibrate)));
 
-void ShowerGuardHandler::configure_hw_motion(const ShowerGuardConfig::Motion &motion)
-{
-    // configure motion
-    // ignore debounce because we are using polling with low frequency (to skip adding synchronisation in case of interrupts)
+        #else
 
-    TRACE("configure motion: gpio=%d, inverted=%d", (int)motion.channel.gpio, (int)motion.channel.inverted)
-    gpioHandler.setupChannel(motion.channel.gpio, INPUT_PULLUP, motion.channel.inverted, NULL);
-}
+        return channel_handlers[channel]->calibrate();
 
-void ShowerGuardHandler::configure_hw_lumi(const ShowerGuardConfig::Lumi &lumi)
-{
-    // configure lumi
-
-    if (lumi.is_configured())
-    {
-        TRACE("configure lumi.ldr: gpio=%d, atten=%d", (int)lumi.ldr.gpio, (int)lumi.ldr.atten)        
-        analogSetPinAttenuation(lumi.ldr.gpio, (adc_attenuation_t)lumi.ldr.atten);
+        #endif // USE_ACTION_QUEUE
     }
     else
     {
-        TRACE("skip configuring lumi: not defined / not installed")        
-    }
-}
-
-void ShowerGuardHandler::configure_hw_light(const ShowerGuardConfig::Light &light)
-{
-    // configure light
-
-    TRACE("configure light: gpio=%d, inverted=%d", (int)light.channel.gpio, (int)light.channel.inverted)
-    gpioHandler.setupChannel(light.channel.gpio, OUTPUT, light.channel.inverted, NULL);
-}
-
-void ShowerGuardHandler::configure_hw_fan(const ShowerGuardConfig::Fan &fan)
-{
-    // configure fan
-
-    TRACE("configure fan: gpio=%d, inverted=%d", (int)fan.channel.gpio, (int)fan.channel.inverted)
-    gpioHandler.setupChannel(fan.channel.gpio, OUTPUT, fan.channel.inverted, NULL);
-}
-
-unsigned ShowerGuardHandler::analog_read(uint8_t gpio)
-{
-    adcAttachPin(gpio);
-    /* adcStart(gpio);
-    
-    int max_attempts = 10;
-
-    while(adcBusy(gpio) == true)
-    {
-        delay(10);
-        max_attempts--;
-
-        if (max_attempts <= 0)
-        {
-            ERROR("Timeout reading adc, gpio=%d", (int) gpio)
-            return 0;
-        }
-    } */
-
-    return analogRead(gpio);
-}
-
-float ShowerGuardHandler::read_rh(float temp)
-{
-    if (config.rh.hw == ShowerGuardConfig::Rh::hwHih5030)
-    {
-        unsigned vad = analog_read(config.rh.vad.gpio);
-        unsigned vdd = analog_read(config.rh.vdd.gpio);
-
-        if (CALIBRATE_RH)
-        {
-            // trace to calibrate voltage divider
-            // VDD should be as close to VAD as possible with a loop between VAD input and 3.3V
-            DEBUG("vad %d, vdd %d", (int) vad, (int) vdd)
-        }
-
-        if (vdd != 0)
-        {
-            // the formula with temperature compensation
-            // (((Vout/VS)-0.1515)/0.00636) / (1.0546-0.00216*T) = (RH )
-
-            float r_rh = (((float(vad) / float(vdd)) - 0.1515) / 0.00636) / (1.0546 - 0.00216 * temp);
-
-            if (config.rh.corr != 0)
-            {
-                //DEBUG("applying non-zero rh correction %f", rh.corr)
-                r_rh += config.rh.corr;
-            }
-
-            if (r_rh < 0)
-            {
-                r_rh = 0;
-            }
-            else if (r_rh > 100)
-            {
-                r_rh = 100;
-            }
-
-            return r_rh;
-        }
-    }
-    else if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
-    {
-        float r_rh = 0;
-
-        if (aht10)
-        {
-            r_rh = aht10->readHumidity();
-
-            if (r_rh == AHT10_ERROR)
-            {
-                ERROR("failed to read humidity from AHT10")
-            }
-            else
-            {
-                if (config.rh.corr != 0)
-                {
-                    //DEBUG("applying non-zero rh correction %f", rh.corr)
-                    r_rh += config.rh.corr;
-                }
-
-                return r_rh; 
-            }
-        }
-    }
-    
-    return 0;
-}
-
-bool ShowerGuardHandler::read_temp(float &temp)
-{
-    //ow.reset();
-    //ow.reset_search();
-
-    bool r = false;
-
-    if (config.temp.channel.is_valid())
-    {
-        size_t device_count = 0;
-
-        unsigned attempts = 10;
-
-        while (device_count == 0)
-        {
-            ds18b20.begin();
-            device_count = ds18b20.getDeviceCount();
-
-            if (attempts)
-            {
-                attempts--;
-            }
-            else
-            {
-                //DEBUG("No one wire devices are found after 10 attempts")
-                break;
-            }
-        }
-
-        ds18b20.requestTemperatures();
-
-        DEBUG("DS18b20 device count %d", (int)device_count)
-
-        float r_temp = 0;
-
-        for (size_t i = 0; i < device_count; ++i)
-        {
-            uint8_t addr[8];
-
-            if (ds18b20.getAddress(addr, i))
-            {
-                char addr_str[32];
-
-                sprintf(addr_str, "%02x-%02x%02x%02x%02x%02x%02x", (int)addr[0], (int)addr[6], (int)addr[5], (int)addr[4], (int)addr[3], (int)addr[2], (int)addr[1]);
-                float i_temp = ds18b20.getTempC(addr);
-
-                
-                DEBUG("addr=[%s], temp=%f", addr_str, i_temp)
-
-                if ((config.temp.addr.isEmpty() && device_count == 1) || !strcmp(addr_str, config.temp.addr.c_str()))
-                {
-                    r_temp = round(i_temp * 10.0) / 10.0;
-
-                    if (config.temp.corr != 0)
-                    {
-                        //DEBUG("applying non-zero correction %f", config.temp.corr)
-                        r_temp += config.temp.corr;
-                    }
-                    /*
-                    if (!strcmp(addr_str, config.temp.addr.c_str()))
-                    {
-                        DEBUG("this is configured device, r_temp=%f", r_temp)
-                    }
-                    else
-                    {
-                        DEBUG("this is the only device and no addr in config, r_temp=%f", r_temp)
-                    }                    
-                    */
-                    if ((int)r_temp == -127)
-                    {
-                        ERROR("reading failed with N/A value")
-                        r = false;
-                    }
-                    else
-                    {
-                        temp = r_temp;
-                        r = true;
-                    }
-                }
-            }
-        }
+        r = "channel out of range";
     }
 
-    if (r == false)
-    {
-        if (config.rh.hw == ShowerGuardConfig::Rh::hwAht10)
-        {
-            float r_temp = 0;
-
-            if (aht10)
-            {
-                r_temp = aht10->readTemperature();
-
-                if (r_temp == AHT10_ERROR)
-                {
-                    ERROR("failed to read temperature from AHT10")
-                }
-                else
-                {
-                    r = true;
-                }
-            }
-
-            if (r == true)
-            {
-                if (config.temp.corr != 0)
-                {
-                    //DEBUG("applying non-zero correction %f", config.temp.corr)
-                    r_temp += config.temp.corr;
-                }
-
-                temp = r_temp;
-            }
-        }
-    }
-    
     return r;
 }
 
-bool ShowerGuardHandler::read_motion(const ShowerGuardConfig::Motion &motion)
+String ProportionalHandler::actuate(size_t channel, uint8_t value)
 {
-    // avoid using non-static functions of gpiochannel to skip thread synchronisation
+    TRACE("actuate channel %d to value %d", (int) channel, (int) value)
+    String r;
 
-    return GpioChannel::read(motion.channel.gpio, motion.channel.inverted);
-}
+    Lock lock(semaphore);
 
-float ShowerGuardHandler::read_lumi(const ShowerGuardConfig::Lumi &lumi)
-{
-
-    if (lumi.is_configured())
+    if (channel >= 0 && channel < channel_handlers.size())
     {
-        unsigned ldr_reading = analog_read(lumi.ldr.gpio);
-        // DEBUG("ldr_reading %d", (int) ldr_reading)
-        return float(int((float(ldr_reading) / float(4095))*100));
+        #ifdef USE_ACTION_QUEUE
+
+        DEBUG("push action to queue: channel %d, action aActuate, value %d", (int) channel, (int) value)
+        action_queue.push_back(std::make_pair(channel, ActionAndValue(ActionAndValue::aActuate, value)));
+
+        #else
+
+        return channel_handlers[channel]->actuate(value);
+
+        #endif // USE_ACTION_QUEUE
+    }
+    else
+    {
+        r = "channel out of range";
     }
 
-    return 0;
+    return r;
 }
 
-void ShowerGuardHandler::write_light(const ShowerGuardConfig::Light &light, bool value)
-{
-    // avoid using non-static functions of gpiochannel to skip thread synchronisation
-
-    bool value_to_write = light.channel.coilon_active ? value : (value ? false : true);
-    GpioChannel::write(light.channel.gpio, light.channel.inverted, value_to_write);
-    DEBUG("write_light gpio %d value %d", (int) light.channel.gpio, (int) value_to_write)
-}
-
-void ShowerGuardHandler::write_fan(const ShowerGuardConfig::Fan &fan, bool value)
-{
-    // avoid using non-static functions of gpiochannel to skip thread synchronisation
-
-    bool value_to_write = fan.channel.coilon_active ? value : (value ? false : true);
-    GpioChannel::write(fan.channel.gpio, fan.channel.inverted, value_to_write);
-    DEBUG("write_fan gpio %d value %d", (int) fan.channel.gpio, (int) value_to_write)
-}
-
-void start_shower_guard_task(const ShowerGuardConfig &config)
+void start_proportional_task(const ProportionalConfig &config)
 {
     if (handler.is_active())
     {
-        ERROR("Attempt to start shower_guard_task while it is running, redirecting to reconfigure")
-        reconfigure_shower_guard(config);
+        ERROR("Attempt to start proportional_task while it is running, redirecting to reconfigure")
+        reconfigure_proportional(config);
     }
     else
     {
@@ -1700,19 +1419,114 @@ void start_shower_guard_task(const ShowerGuardConfig &config)
     }
 }
 
-void stop_shower_guard_task()
+void stop_proportional_task()
 {
     handler.stop();
 }
 
-ShowerGuardStatus get_shower_guard_status()
+ProportionalStatus get_proportional_status()
 {
     return handler.get_status();
 }
 
-void reconfigure_shower_guard(const ShowerGuardConfig &_config)
+void reconfigure_proportional(const ProportionalConfig &_config)
 {
     handler.reconfigure(_config);
+}
+
+String proportional_calibrate(const String & channel_str)
+{
+    bool param_ok = true;
+
+    if (!channel_str.isEmpty())
+    {
+        for (size_t i=0; i<channel_str.length(); ++i)
+        {
+            if (isdigit(channel_str[i]) == false)
+            {
+                param_ok = false;
+                break;
+            } 
+        }
+
+        if (param_ok)
+        {
+            size_t channel = (size_t)  channel_str.toInt();
+
+            if (channel >= 0 && channel < handler.get_num_channels())
+            {
+                return handler.calibrate(channel);
+            }
+            else
+            {
+                return "Channel out of range";
+            }
+        }
+    }
+    else
+    {
+        param_ok = false;
+    }
+    
+    return "Parameter error";
+}
+
+String proportional_actuate(const String & channel_str, const String & value_str)
+{
+    bool param_ok = true;
+
+    if (!channel_str.isEmpty() && !value_str.isEmpty())
+    {
+        for (size_t i=0; i<channel_str.length(); ++i)
+        {
+            if (isdigit(channel_str[i]) == false)
+            {
+                param_ok = false;
+                break;
+            } 
+        }
+
+        if (param_ok)
+        {
+            for (size_t i=0; i<value_str.length(); ++i)
+            {
+                if (isdigit(value_str[i]) == false)
+                {
+                    param_ok = false;
+                    break;
+                } 
+            }
+
+            if (param_ok)
+            {
+                size_t channel = (size_t)  channel_str.toInt();
+                size_t value = (size_t)  value_str.toInt();
+
+                DEBUG("validating channel number, get_num_channels %d", (int)handler.get_num_channels())
+                if (channel >= 0 && channel < handler.get_num_channels())
+                {
+                    if (value >= 0 && value <= 100)
+                    {
+                        return handler.actuate(channel, value);
+                    }
+                    else
+                    {
+                        return "Value out of range"; 
+                    }
+                }
+                else
+                {
+                    return "Channel out of range"; 
+                }
+            }
+        }
+    }
+    else
+    {
+        param_ok = false;
+    }
+    
+    return "Parameter error";
 }
 
 #endif // INCLUDE_PROPORTIONAL

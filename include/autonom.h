@@ -9,10 +9,12 @@ void restoreAutonom(); // from EPROM
 
 String actionAutonomKeyboxActuate(const String & channel_str);
 
-
 String actionAutonomRfidLockProgram(const String & code_str, uint16_t timeout);
 String actionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
                                 const String & type_str);
+
+String actionAutonomProportionalCalibrate(const String & channel_str);
+String actionAutonomProportionalActuate(const String & channel_str, const String & value_str);
 
 enum FunctionType
 {

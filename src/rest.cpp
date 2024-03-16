@@ -248,6 +248,22 @@ String restActionAutonomRfidLockAdd(const String & name_str, const String & code
   return actionAutonomRfidLockAdd(name_str, code_str, locks, type_str);
 }
 
+String restActionAutonomProportionalCalibrate(const String & channel_str)
+{
+  TRACE("REST action autonom proportional calibrate")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomProportionalCalibrate(channel_str);
+}
+
+String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom proportional actuate")
+  DEBUG("channel %s, value %s", channel_str.c_str(), value_str.c_str())
+
+  return actionAutonomProportionalActuate(channel_str, value_str);
+}
+
 String restGet(const String & resetStamp) 
 {
   TRACE("REST get")

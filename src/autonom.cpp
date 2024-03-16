@@ -104,8 +104,8 @@ class AutonomTaskManager
         void stopProportional();
         void reconfigureProportional(const ProportionalConfig &);
         
-        String setValue(uint8_t value);
-        String calibrate();
+        String proportionalCalibrate(const String & channel_str);
+        String proportionalActuate(const String & channel_str, const String & value_str);
 
         ProportionalStatus getProportionalStatus() const;
 
@@ -315,6 +315,18 @@ ProportionalStatus AutonomTaskManager::getProportionalStatus() const
 {
     TRACE("getProportionalStatus")
     return get_proportional_status();
+}
+
+String AutonomTaskManager::proportionalCalibrate(const String & channel_str)
+{
+    TRACE("proportionalCalibrate")
+    return proportional_calibrate(channel_str);
+}
+
+String AutonomTaskManager::proportionalActuate(const String & channel_str, const String & value_str)
+{
+    TRACE("proportionalActuate")
+    return proportional_actuate(channel_str, value_str);
 }
 
 #endif // INCLUDE_PROPORTIONAL
@@ -682,7 +694,7 @@ String setupAutonom(const JsonVariant & json)
 
                         proportionalConfig.from_json(config_json);
 
-                        TRACE("function %s: audioConfig.is_valid=%s", function.c_str(), (proportionalConfig.is_valid() ? "true" : "false"))
+                        TRACE("function %s: proportionalConfig.is_valid=%s", function.c_str(), (proportionalConfig.is_valid() ? "true" : "false"))
                         TRACE(proportionalConfig.as_string().c_str())
 
                         if (proportionalConfig.is_valid())
@@ -695,7 +707,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftAudio, buffer});
+                            epromImage.blocks.insert({(uint8_t) ftProportional, buffer});
                         }
                         else
                         {
@@ -1052,6 +1064,44 @@ String actionAutonomRfidLockAdd(const String & name_str, const String & code_str
     #endif // INCLUDE_RFIDLOCK
 }
 
+
+String actionAutonomProportionalCalibrate(const String & channel_str)
+{
+    #ifdef INCLUDE_PROPORTIONAL
+    if (autonomTaskManager.isProportionalActive())
+    {
+        return autonomTaskManager.proportionalCalibrate(channel_str);
+    }
+    else
+    {
+        return "proportional not active";
+    }
+    
+    #else
+
+    return "proportional is not built in currrent module";
+
+    #endif // INCLUDE_PROPORTIONAL
+}
+
+String actionAutonomProportionalActuate(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_PROPORTIONAL
+    if (autonomTaskManager.isProportionalActive())
+    {
+        return autonomTaskManager.proportionalActuate(channel_str, value_str);
+    }
+    else
+    {
+        return "proportional not active";
+    }
+    
+    #else
+
+    return "proportional is not built in currrent module";
+
+    #endif // INCLUDE_PROPORTIONAL
+}
 
 void getAutonom(JsonVariant & json)
 {

@@ -229,22 +229,24 @@ RESPONSE:
     "config":{
 
                 "channels":[
-                            {"one_a":{"channel":{"gpio":3, "inverted":false}},
-                             "one_b":{"channel":{"gpio":5, "inverted":false}},
-                             "open":{"channel":{"gpio":9, "inverted":0, "debounce":250}},
-                             "closed":{"channel":{"gpio":7, "inverted":0, "debounce":250}},
+                            {"one_a":{"gpio":3, "inverted":false},
+                             "one_b":{"gpio":5, "inverted":false},
+                             "open":{"gpio":9, "inverted":0, "debounce":250},
+                             "closed":{"gpio":7, "inverted":0, "debounce":250},
                              "valve_profile":"xs15"
-                             }, ...
-                           ]
-                },
+                             }
+                           ],
+                
 
                 "valve_profiles":[
-                            { "open_time":15
-                             }, ...
+                            {"name":"xs15", "open_time":15,
+                             "time_2_flow_rate":[[10,5],[30,40],[60,80], [100,100]]
+                            
+                            }
                             
                             ]
                 },
-    }
+    
 }]
 
 REST POST cleanup
@@ -322,6 +324,20 @@ RESPONSE:
 
 REST POST action
 URL: <base>/action/autonom/rfid-lock/unlock?lock_channels=*
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/proportional/calibrate?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/proportional/actuate?channel=XX&value=YY
 BODY: none
 RESPONSE: 
 {
@@ -692,6 +708,64 @@ void on_action_autonom_rfid_lock_add()
     onboard_led_paired = true;
 }
 
+void on_action_autonom_proportional_calibrate()
+{
+    String channel_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        r = restActionAutonomProportionalCalibrate(channel_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_proportional_actuate()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true && webServer.hasArg("value") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        value_str = webServer.arg("value");        
+        r = restActionAutonomProportionalActuate(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
 void on_reset()
 {
     String resetStamp;
@@ -784,6 +858,8 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/keybox/actuate", HTTP_POST, on_action_autonom_keybox_actuate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/program", HTTP_POST, on_action_autonom_rfid_lock_program);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/add", HTTP_POST, on_action_autonom_rfid_lock_add);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/calibrate", HTTP_POST, on_action_autonom_proportional_calibrate);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/actuate", HTTP_POST, on_action_autonom_proportional_actuate);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);
