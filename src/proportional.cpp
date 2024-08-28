@@ -1,13 +1,72 @@
 #ifdef INCLUDE_PROPORTIONAL
 #include <ArduinoJson.h>
 #include <proportional.h>
+#include <autonom.h>
 #include <gpio.h>
-#include <trace.h>
 #include <binarySemaphore.h>
 #include <Wire.h>
 #include <deque>
+#include <epromImage.h>
+#include <sstream>
 
 extern GpioHandler gpioHandler;
+
+
+template<class T, size_t window_size> class Averager
+{
+    public:
+
+        Averager()
+        {
+            reset();
+        }
+
+        void reset()
+        {
+            window_pos = -1;
+        }
+
+        void push(T value)
+        {
+            if (window_pos == window_size-1)
+            {
+                memmove((char*) window, (const char*) window + sizeof(T), sizeof(T) * (window_size-1));
+                window[window_pos] = value;
+            }
+            else
+            {
+                window_pos++;
+                window[window_pos] = value;
+            }
+        }
+
+        bool is_window_full() const
+        {
+            return window_pos == window_size-1;   
+        }
+
+        T get_average(T empty) const
+        {
+            if (window_pos == -1)
+            {
+                return empty;
+            }
+
+            T average = window[0];
+            
+            for(size_t i=1; i<=window_pos; ++i)
+            {
+                average += window[i];
+            }
+
+            return average / (window_pos+1);
+        }
+
+        T window[window_size];
+        int window_pos;
+};
+
+
 
 static void _err_dup(const char *name, int value)
 {
@@ -34,6 +93,7 @@ bool ProportionalConfig::is_valid() const
     {
         if (it->is_valid() == false)
         {
+            ERROR("channel %d is_valid() == false", (int) i)
             return false;
         }
 
@@ -91,6 +151,20 @@ bool ProportionalConfig::is_valid() const
         if (!checkpad.set_usage(it->closed.gpio, GpioCheckpad::uDigitalInput))
         {
             _err_cap(object_name, (int)it->closed.gpio);
+            return false;
+        }
+
+        sprintf(object_name, "channel[%d].load_detect", (int) i);
+
+        if (checkpad.get_usage(it->load_detect.pin.gpio) != GpioCheckpad::uNone)
+        {
+            _err_dup(object_name, (int)it->load_detect.pin.gpio);
+            return false;
+        }
+
+        if (!checkpad.set_usage(it->load_detect.pin.gpio, GpioCheckpad::uAnalogInput))
+        {
+            _err_cap(object_name, (int)it->load_detect.pin.gpio);
             return false;
         }
     }
@@ -232,6 +306,47 @@ bool ProportionalConfig::from_eprom(std::istream &is)
     }
 }
 
+void ProportionalConfig::Channel::LoadDetect::from_json(const JsonVariant &json)
+{
+    clear();
+
+    if (json.containsKey("pin"))
+    {
+        const JsonVariant &_json = json["pin"];
+        pin.from_json(_json);
+    }
+
+    if (json.containsKey("resistance"))
+    {
+        resistance = (float) json["resistance"];
+    }
+
+    if (json.containsKey("current_threshold"))
+    {
+        current_threshold = (float) json["current_threshold"];
+    }
+}
+
+void ProportionalConfig::Channel::LoadDetect::to_eprom(std::ostream &os) const
+{
+    pin.to_eprom(os);
+
+    os.write((const char *)&resistance, sizeof(resistance));
+    os.write((const char *)&current_threshold, sizeof(current_threshold));
+}
+
+bool ProportionalConfig::Channel::LoadDetect::from_eprom(std::istream &is)
+{
+    clear();
+
+    pin.from_eprom(is);
+
+    is.read((char *)&resistance, sizeof(resistance));
+    is.read((char *)&current_threshold, sizeof(current_threshold));
+
+    return is_valid() && !is.bad();
+}
+
 void ProportionalConfig::Channel::from_json(const JsonVariant &json)
 {
     clear();
@@ -260,6 +375,12 @@ void ProportionalConfig::Channel::from_json(const JsonVariant &json)
         closed.from_json(_json);
     }
 
+    if (json.containsKey("load_detect"))
+    {
+        const JsonVariant &_json = json["load_detect"];
+        load_detect.from_json(_json);
+    }
+
     if (json.containsKey("valve_profile"))
     {
         valve_profile = (const char*) json["valve_profile"];
@@ -277,6 +398,7 @@ void ProportionalConfig::Channel::to_eprom(std::ostream &os) const
     one_b.to_eprom(os);
     open.to_eprom(os);
     closed.to_eprom(os);
+    load_detect.to_eprom(os);
 
     uint8_t len = valve_profile.length();
     os.write((const char *)&len, sizeof(len));
@@ -292,6 +414,7 @@ bool ProportionalConfig::Channel::from_eprom(std::istream &is)
     one_b.from_eprom(is);
     open.from_eprom(is);
     closed.from_eprom(is);
+    load_detect.from_eprom(is);
 
     uint8_t len = 0;
     is.read((char *)&len, sizeof(len));
@@ -316,6 +439,11 @@ void ProportionalConfig::ValveProfile::from_json(const JsonVariant &json)
     if (json.containsKey("open_time"))
     {
         open_time = json["open_time"];
+    }
+
+    if (json.containsKey("max_actuate_add_ups"))
+    {
+        max_actuate_add_ups = json["max_actuate_add_ups"];
     }
 
     if (json.containsKey("time_2_flow_rate"))
@@ -365,6 +493,7 @@ void ProportionalConfig::ValveProfile::from_json(const JsonVariant &json)
 void ProportionalConfig::ValveProfile::to_eprom(std::ostream &os) const
 {
     os.write((const char *)&open_time, sizeof(open_time));
+    os.write((const char *)&max_actuate_add_ups, sizeof(max_actuate_add_ups));
 
     uint8_t len = time_2_flow_rate.size();
     os.write((const char *)&len, sizeof(len));
@@ -381,6 +510,7 @@ bool ProportionalConfig::ValveProfile::from_eprom(std::istream &is)
     clear();
 
     is.read((char *)&open_time, sizeof(open_time));
+    is.read((char *)&max_actuate_add_ups, sizeof(max_actuate_add_ups));
 
     uint8_t len = 0;
     is.read((char *)&len, sizeof(len));
@@ -405,12 +535,16 @@ class ChannelHandler
 {
 public:
 
+    const uint8_t MAX_ACTUATE_ADD_UPS = 1;
+
     ChannelHandler()
     {
         _is_active = false;
-
-        actuate_ref = 255;
+        _value_needs_save = false;
+        actuate_ref = UINT8_MAX;
         actuate_ms = 0;
+        actuate_add_ups = 0;
+        next_actuate_ref = UINT8_MAX;
     }
 
     ~ChannelHandler()
@@ -433,6 +567,7 @@ public:
         {
             Lock lock(semaphore);
             status.config_open_time = valve_profile.open_time * 1000; // ms
+            status.max_actuate_add_ups = valve_profile.max_actuate_add_ups; 
             _status = status;
         }
 
@@ -440,31 +575,63 @@ public:
     }
 
     String calibrate();
-    String actuate(uint8_t value);
+    String actuate(uint8_t value, uint8_t ref = UINT8_MAX);
+
+    bool does_data_need_save() const
+    {
+        return _value_needs_save;
+    }
+
+    void data_saved() 
+    {
+        _value_needs_save = false; 
+    }
 
 protected:
 
     void configure_hw();
 
     static void write_one(const ProportionalConfig::Channel & config, bool a_value, bool b_value);
+
+    static void write_one_2_open(const ProportionalConfig::Channel & config);
+    static void write_one_2_closed(const ProportionalConfig::Channel & config);
+    static void write_one_stop(const ProportionalConfig::Channel & config);
+
     static bool read(const DigitalInputChannelConfig & config);
+
+    static float read_current(const ProportionalConfig::Channel::LoadDetect & config);
+
+    static unsigned analog_read(uint8_t gpio);
 
     static void calibration_task(void *parameter);
     static void actuation_task(void *parameter);
+
+    static uint32_t flow_2_time(const ProportionalConfig::ValveProfile & _valve_profile,  
+                                int flow_percent, uint32_t open_time, uint8_t from);
 
     BinarySemaphore semaphore;
     ProportionalConfig::Channel config;
     ProportionalConfig::ValveProfile valve_profile;
     ProportionalStatus::Channel status;
     bool _is_active;
+    bool _value_needs_save;
 
     uint8_t actuate_ref;
     uint32_t actuate_ms;
+
+    // this indicates how many actuations were made from the previous actuation as a reference
+    // after some (MAX_ACTUATE_ADD_UPS or value from valve_profile) the motor is reset to a nearest end-state and the actuation
+    // is done from there
+
+    uint8_t actuate_add_ups;
+    uint8_t next_actuate_ref;
 };
 
 class ProportionalHandler
 {
 public:
+
+    const int DATA_EPROM_VERSION = 1;
 
     struct ActionAndValue
     {
@@ -478,15 +645,18 @@ public:
         ActionAndValue()
         {
             action = aNone;
-            value = 255;
+            value = UINT8_MAX;
+            ref = UINT8_MAX;
         }
 
-        ActionAndValue(Action _action, uint8_t _value = 255) : action(_action), value(_value)
+        ActionAndValue(Action _action, uint8_t _value = UINT8_MAX, uint8_t _ref = UINT8_MAX) : 
+              action(_action), value(_value), ref(_ref)
         {
         }
 
         Action action;
         uint8_t value;
+        uint8_t ref;
     };
 
     ProportionalHandler()
@@ -527,7 +697,16 @@ public:
     }
 
     String calibrate(size_t channel);
-    String actuate(size_t channel, uint8_t value);
+    String actuate(size_t channel, uint8_t value, uint8_t ref = UINT8_MAX);
+
+    bool does_data_need_save();
+    void data_saved();
+
+    void data_to_eprom(std::ostream & os);
+    bool data_from_eprom(std::istream & is);
+
+    bool read_data();
+    void save_data();
 
     void configure_channels();
     void update_valve_profiles();
@@ -584,7 +763,7 @@ void ChannelHandler::start(const ProportionalConfig::Channel &_config,
 
         configure_hw();
 
-        valve_profile = _valve_profile;
+        set_valve_profile(_valve_profile);
 
         _is_active = true;
     }
@@ -615,7 +794,8 @@ void ChannelHandler::stop()
 void ChannelHandler::reconfigure(const ProportionalConfig::Channel &_config)
 {
     TRACE("ChannelHandler::reconfigure, status %s", status.as_string().c_str())
-    TRACE("config from %s to %s", config.as_string().c_str(),_config.as_string().c_str())
+    TRACE("config from %s", config.as_string().c_str())
+    TRACE("config to %s", _config.as_string().c_str())
 
     if (!(config == _config))
     {
@@ -647,6 +827,16 @@ void ChannelHandler::set_valve_profile(const ProportionalConfig::ValveProfile &_
     if (!(valve_profile == _valve_profile))
     {
         valve_profile = _valve_profile;
+
+        if (valve_profile.time_2_flow_rate.empty() == false)
+        {
+            size_t size = valve_profile.time_2_flow_rate.size();
+
+            if (valve_profile.time_2_flow_rate[size-1].second < 100)
+            {
+                valve_profile.time_2_flow_rate.push_back(std::make_pair(100,100));    
+            }
+        }
     }
 }
 
@@ -678,7 +868,7 @@ String ChannelHandler::calibrate()
             xTaskCreate(
                 calibration_task,      // Function that should be called
                 "calibration",         // Name of the task (for debugging)
-                8192,                  // Stack size (bytes)
+                4096,                  // Stack size (bytes)
                 this,                  // Parameter to pass
                 1,                     // Task priority
                 NULL                   // Task handle
@@ -695,9 +885,9 @@ String ChannelHandler::calibrate()
     return r;
 }
 
-String ChannelHandler::actuate(uint8_t value)
+String ChannelHandler::actuate(uint8_t value, uint8_t ref)
 {
-    TRACE("ChannelHandler::actuate, value %d, status %s", (int) value, status.as_string().c_str())
+    TRACE("ChannelHandler::actuate, value %d, ref %d, status %s", (int) value, (int) ref, status.as_string().c_str())
     String r;
 
     if (_is_active == true)
@@ -707,8 +897,25 @@ String ChannelHandler::actuate(uint8_t value)
         // if another actuation is ongoing - then the task will check at the end and restart actuation if the
         // new value is different from its former target value
 
+        if (value > 100)
+        {
+            value = 100;
+        }
+
+        if (!(ref == 0 || ref == 100 || ref == UINT8_MAX))
+        {
+            ref = UINT8_MAX;
+        }
+
         {Lock lock(semaphore);
-        status.value = value; } 
+
+        if (status.value != value)
+        {
+            status.value = value;
+            _value_needs_save = true;
+        }
+
+        next_actuate_ref = ref; } 
 
         // theoretically there could be a slight chance that we fall between the chairs and
         // do not start new actuation at exact moment the one which is ongoing finishes
@@ -756,6 +963,10 @@ void ChannelHandler::configure_hw()
 
     TRACE("configure one_b: gpio=%d, inverted=%d", (int)config.one_b.gpio, (int)config.one_b.inverted)
     gpioHandler.setupChannel(config.one_b.gpio, OUTPUT, config.one_b.inverted, NULL);
+
+    TRACE("configure load_detect.pin: gpio=%d, atten=%d", (int)config.load_detect.pin.gpio, 
+          (int)config.load_detect.pin.atten)
+    analogSetPinAttenuation(config.load_detect.pin.gpio, (adc_attenuation_t)config.load_detect.pin.atten);
 }
 
 void ChannelHandler::write_one(const ProportionalConfig::Channel & config, bool a_value, bool b_value)
@@ -765,7 +976,22 @@ void ChannelHandler::write_one(const ProportionalConfig::Channel & config, bool 
     GpioChannel::write(config.one_a.gpio, config.one_a.inverted, a_value);
     GpioChannel::write(config.one_b.gpio, config.one_b.inverted, b_value);
 
-    DEBUG("write_one (a=%s, b=%s)", a_value ? "true":"false", b_value ? "true":"false")
+    DEBUG("write_one (a=%s gpio%d, b=%s gpio%d)", a_value ? "true":"false", (int) config.one_a.gpio, b_value ? "true":"false", (int) config.one_b.gpio)
+}
+
+void ChannelHandler::write_one_2_open(const ProportionalConfig::Channel & config)
+{
+    write_one(config, false, true);
+}
+
+void ChannelHandler::write_one_2_closed(const ProportionalConfig::Channel & config)
+{
+    write_one(config, true, false);
+}
+
+void ChannelHandler::write_one_stop(const ProportionalConfig::Channel & config)
+{
+    write_one(config, false, false);
 }
 
 bool ChannelHandler::read(const DigitalInputChannelConfig & config)
@@ -773,6 +999,37 @@ bool ChannelHandler::read(const DigitalInputChannelConfig & config)
     // avoid using non-static functions of gpiochannel to skip thread synchronisation
 
     return GpioChannel::read(config.gpio, config.inverted);
+}
+
+float ChannelHandler::read_current(const ProportionalConfig::Channel::LoadDetect & _config)
+{
+    unsigned readout = analog_read(_config.pin.gpio);
+    float voltage = (readout * 0.75 ) / 8191;  
+    float current = voltage * _config.resistance;
+    DEBUG("read_current: readout %d, voltage %f, current %f", (int) readout, voltage, current)
+    return current;
+}
+
+unsigned ChannelHandler::analog_read(uint8_t gpio)
+{
+    adcAttachPin(gpio);
+    /* adcStart(gpio);
+    
+    int max_attempts = 10;
+
+    while(adcBusy(gpio) == true)
+    {
+        delay(10);
+        max_attempts--;
+
+        if (max_attempts <= 0)
+        {
+            ERROR("Timeout reading adc, gpio=%d", (int) gpio)
+            return 0;
+        }
+    } */
+
+    return analogRead(gpio);
 }
 
 void ChannelHandler::calibration_task(void *parameter)
@@ -786,9 +1043,9 @@ void ChannelHandler::calibration_task(void *parameter)
 
     size_t timeout_seconds = 30;
 
-    if (_this->status.config_open_time != 0)
+    if (_this->valve_profile.open_time != 0)
     {
-        timeout_seconds = _this->status.config_open_time * 2;    
+        timeout_seconds = _this->valve_profile.open_time * 2;    
     }
 
     DEBUG("calibration timeout set to %d seconds", (int) timeout_seconds)
@@ -871,6 +1128,8 @@ void ChannelHandler::calibration_task(void *parameter)
 
     int pass = 0;
     bool is_error = false;
+    const char * error_str = "";
+    Averager<float, 5> current_averager;
 
     DEBUG("before calibration, open=%d, closed=%d", (int)read(_this->config.open), (int)read(_this->config.closed))
 
@@ -896,15 +1155,16 @@ void ChannelHandler::calibration_task(void *parameter)
         {
             if (run_to[pass] == 100)
             {
-                write_one(_this->config, true, false);
+                write_one_2_open(_this->config);
             }
             else
             {
-                write_one(_this->config, false, true);
+                write_one_2_closed(_this->config);
             }
         }
 
         size_t c_count = 0;
+        current_averager.reset();
 
         while(_this->_is_active == true)
         {
@@ -916,11 +1176,12 @@ void ChannelHandler::calibration_task(void *parameter)
             delay(1);
             ready = read(wait_on);
 
-            if (c_count % 300 == 0)
+            if (c_count % 200 == 0)
             {
                 unsigned long t_probe = millis();
                 unsigned long time_passed = 0;
-                if (t_begin < t_probe)
+
+                if (t_begin <= t_probe)
                 {
                     time_passed = t_probe - t_begin;
                 }
@@ -931,24 +1192,43 @@ void ChannelHandler::calibration_task(void *parameter)
 
                 if (time_passed > timeout_seconds * 1000)
                 {
-                    ERROR("calibration timeout detected")
+                    ERROR("calibration timeout detected, t_begin %d, t_probe %d", (int) t_begin, (int) t_probe)
+                    is_error = true;
+                    error_str = "calibration error: timeout";
                     break;
+                }
+
+                float current = read_current(_this->config.load_detect);
+                current_averager.push(current);
+
+                if (current_averager.is_window_full())
+                {
+                    float average_current = current_averager.get_average(0);
+                    TRACE("average current %f", average_current)
+
+                    if (average_current < _this->config.load_detect.current_threshold)
+                    {
+                        ERROR("calibration no load detected, measured current %f, configured threshold %f", 
+                            current, _this->config.load_detect.current_threshold)
+                        is_error = true;
+                        error_str = "calibration error: no load";
+                        break;
+                    }
                 }
             }
             
             c_count ++;
         }
 
-        write_one(_this->config, false, false);
+        write_one_stop(_this->config);
 
         if (_this->_is_active == false)
         {
             break;
         }
         
-        if (ready == false)
+        if (is_error == true)
         {
-            is_error = true;
             break;
         }
 
@@ -965,6 +1245,8 @@ void ChannelHandler::calibration_task(void *parameter)
 
         TRACE("milliseconds %d", (int) milliseconds[pass])
         pass++;
+
+        delay(1000); // let the motor stop
     }
 
     {Lock lock(_this->semaphore);
@@ -982,13 +1264,15 @@ void ChannelHandler::calibration_task(void *parameter)
 
         #endif // ASYMMETRICAL_OPEN_CLOSE
 
-        _this->actuate_ref = 255;
+        _this->actuate_ref = UINT8_MAX;
 
-        if (is_error == true)
+        if  (_this->_is_active == false)
         {
-            _this->status.error = "calibration error";
-            ERROR("calibration error")
+            error_str = "calibration error: aborted (is_active==false)";
         }
+
+        _this->status.error = error_str;
+        ERROR(error_str)
     }
     else
     {
@@ -1040,17 +1324,476 @@ void ChannelHandler::actuation_task(void *parameter)
 
     TRACE("actuation_task started, status %s", _this->status.as_string().c_str())
 
-    delay(1000);
+    TRACE("before: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
+         (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
+
+    if (_this->actuate_ref == 0 || _this->actuate_ref == 100)
+    {
+        uint32_t open_2_closed_time = 0;
+        uint32_t closed_2_open_time = 0;
+
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        open_2_closed_time = _this->status.calib_open_2_closed_time;
+        closed_2_open_time = _this->status.calib_closed_2_open_time;
+
+        #else
+
+        open_2_closed_time = _this->status.calib_open_time;
+        closed_2_open_time = _this->status.calib_open_time;
+        
+        #endif
+
+        if (open_2_closed_time == 0)
+        {
+            open_2_closed_time = _this->status.config_open_time;
+            TRACE("will use config_open_time instead of calibrated open_2_closed_time (==0)")
+        }
+
+        if (closed_2_open_time == 0)
+        {
+            closed_2_open_time = _this->status.config_open_time;
+            TRACE("will use config_open_time instead of calibrated closed_2_open_time (==0)")
+        }
+
+        uint32_t open_time = _this->actuate_ref == 0 ? closed_2_open_time : open_2_closed_time; 
+        
+        if (open_2_closed_time > 0 && closed_2_open_time > 0)
+        {
+            bool should_restart = false;
+
+            uint32_t new_actuate_ms_from_closed = flow_2_time(_this->valve_profile, _this->status.value, closed_2_open_time, 0);
+            uint32_t new_actuate_ms_from_open = flow_2_time(_this->valve_profile, _this->status.value, open_2_closed_time, 100);  
+
+            uint32_t new_actuate_ms = _this->actuate_ref == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;
+            int delta = (int) new_actuate_ms - (int) _this->actuate_ms;
+
+            DEBUG("new_actuate_ms_from_closed %d, new_actuate_ms_from_open %d, new_actuate_ms %d, delta %d",
+                  (int) new_actuate_ms_from_closed, (int) new_actuate_ms_from_open, (int)new_actuate_ms, delta)
+
+            if (_this->next_actuate_ref == 0 || _this->next_actuate_ref == 100)
+            {
+                DEBUG("will restart from %d due to explicit command", (int) _this->next_actuate_ref)
+                should_restart = true;
+            }
+            else if (_this->actuate_ms >= open_time || _this->actuate_add_ups >= _this->valve_profile.max_actuate_add_ups)
+            {
+                DEBUG("will restart due to invalid actuate_ms or add-up threshold")
+                should_restart = true;
+            }
+            else if (_this->status.value <= 10 || _this->status.value >= 90)
+            {
+                DEBUG("will restart due to value is too close to an end-state")
+                // if value is close enough to an end-state - dont bother with add-up, restart and go from there 
+                should_restart = true;
+            }
+            else
+            {
+                #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+                // if we have asymmetrical times closed-2-open and open-2-closed then we should 
+                // only continue if delta is > 0
+
+                DEBUG("will restart due to negative delta")
+
+                if (delta < 0)
+                {
+                    should_restart = true;
+                }                
+                # endif // ASYMMETRICAL_OPEN_CLOSE
+            }
+
+            size_t timeout_seconds = 30;
+
+            if (_this->valve_profile.open_time != 0)
+            {
+                timeout_seconds = _this->valve_profile.open_time * 2;    
+            }
+
+            bool is_error = false;
+            const char * error_str = "";
+            Averager<float, 5> current_averager;
+
+            if (should_restart == true)
+            {
+                // we need to reset to a nearest end-state and start from there;
+
+                uint8_t go_through = 0;
+
+                if (_this->next_actuate_ref == 0 || _this->next_actuate_ref == 100)
+                {
+                    go_through = _this->next_actuate_ref;
+                     _this->next_actuate_ref = UINT8_MAX;
+                }
+                else if (_this->actuate_ms >= open_time)
+                {
+                    go_through = new_actuate_ms_from_closed < new_actuate_ms_from_open ? 0 : 100;
+                }
+                else if (_this->status.value <= 10)
+                {
+                    go_through = 0;
+                }
+                else if (_this->status.value >= 90)
+                {
+                    go_through = 100;
+                }
+                else
+                {
+                    // select nearest by minimum of go-time sum : go-to-end-state + go-to-new-value
+
+                    uint32_t go_time_to_closed = _this->actuate_ref == 0 ? _this->actuate_ms : (open_2_closed_time -_this->actuate_ms);
+                    uint32_t go_time_to_open = _this->actuate_ref == 100 ? _this->actuate_ms : (closed_2_open_time-_this->actuate_ms);
+
+                    uint32_t go_time_through_closed = go_time_to_closed + new_actuate_ms_from_closed;
+                    uint32_t go_time_through_open = go_time_to_open + new_actuate_ms_from_open;
+
+                    go_through = go_time_through_closed < go_time_through_open ? 0 : 100;
+                }
+
+                new_actuate_ms = go_through == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;                    
+                delta = new_actuate_ms;
+
+                TRACE("Will actuate going through state %d, go-time is %d ms", (int) go_through, (int) new_actuate_ms)                    
+                TRACE("Resetting to end-state %d", (int) go_through)                    
+
+                uint32_t t_begin = millis();
+                DigitalInputChannelConfig wait_on;
+
+                if (go_through == 100)
+                {
+                    wait_on = _this->config.open;
+                }
+                else
+                {
+                    wait_on = _this->config.closed;
+                }
+
+                bool ready = read(wait_on);
+
+                if (ready == false)
+                {
+                    if (go_through == 100)
+                    {
+                        write_one_2_open(_this->config);
+                    }
+                    else
+                    {
+                        write_one_2_closed(_this->config);
+                    }
+                }
+
+                size_t c_count = 0;
+
+                while(_this->_is_active == true)
+                {
+                    if (ready == true)
+                    {
+                        break;
+                    }
+
+                    delay(1);
+                    ready = read(wait_on);
+
+                    if (c_count % 200 == 0)
+                    {
+                        unsigned long t_probe = millis();
+                        unsigned long time_passed = 0;
+
+                        if (t_begin <= t_probe)
+                        {
+                            time_passed = t_probe - t_begin;
+                        }
+                        else
+                        {
+                            time_passed = t_probe + (ULONG_MAX - t_begin);
+                        }
+
+                        if (time_passed > timeout_seconds * 1000)
+                        {
+                            ERROR("actuation timeout detected, t_begin %d, t_probe %d", (int) t_begin, (int) t_probe)
+                            is_error = true;
+                            error_str = "actuation error: timeout at resetting to end-state";
+                            break;
+                        }
+
+                        float current = read_current(_this->config.load_detect);
+                        current_averager.push(current);
+
+                        if (current_averager.is_window_full())
+                        {
+                            float average_current = current_averager.get_average(0);
+                            TRACE("average current %f", average_current)
+
+                            if (average_current < _this->config.load_detect.current_threshold)
+                            {                        
+                                ERROR("actuation no load detected, measured current %f, configured threshold %f", 
+                                    current, _this->config.load_detect.current_threshold)
+                                is_error = true;
+                                error_str = "actuation error: no load";
+                                break;
+                            }
+                        }
+                    }
+                    
+                    c_count ++;
+                }
+
+                write_one_stop(_this->config);
+                
+                if (is_error == true || _this->_is_active == false)
+                {
+                    if  (_this->_is_active == false)
+                    {
+                        error_str = "actuation error: aborted (is_active==false)";
+                    }
+                    
+                    _this->status.error = error_str;
+                    ERROR(error_str)
+
+                    _this->actuate_ref = UINT8_MAX;
+                }
+                else
+                {
+                    _this->actuate_ref = go_through;    
+                    _this->status.error.clear();
+
+                    delay(1000); // let the motor stop
+                }
+
+                _this->actuate_ms = 0;
+                _this->actuate_add_ups = 0;
+            }
+            else
+            {
+                TRACE("Will actuate from current ref, delta %d ms", (int) delta)
+            }
+
+            if (_this->_is_active == true && is_error == false)
+            {
+                TRACE("Adding up delta %d ms", (int) delta)                    
+
+                // continue with add-up
+
+                if (abs(delta)  <= 50)
+                {                
+                    TRACE("Delta is too short - do nothing")                    
+
+                    // do nothing since we cannot get a predictable motor movement for this time (50ms)
+                    // neither update actuate_ms and actuate_add_ups
+                }
+                else
+                {
+                    read_current(_this->config.load_detect);
+
+                    uint32_t t_begin = millis();
+
+                    if (_this->actuate_ref == 100)
+                    {
+                        if (delta > 0)
+                        {
+                            write_one_2_closed(_this->config);
+                        }
+                        else
+                        {
+                            write_one_2_open(_this->config);
+                        }
+                    }
+                    else
+                    {
+                        if (delta > 0)
+                        {
+                            write_one_2_open(_this->config);
+                        }
+                        else
+                        {
+                            write_one_2_closed(_this->config);
+                        }
+                    }
+
+                    read_current(_this->config.load_detect);
+
+                    size_t c_count = 0;
+
+                    while(_this->_is_active == true)
+                    {
+                        delay(1);
+
+                        unsigned long t_probe = millis();
+                        unsigned long time_passed = 0;
+
+                        if (t_begin <= t_probe)
+                        {
+                            time_passed = t_probe - t_begin;
+                        }
+                        else
+                        {
+                            time_passed = t_probe + (ULONG_MAX - t_begin);
+                        }
+
+                        if (time_passed >= abs(delta))
+                        {
+                            break;
+                        }
+
+                        if (c_count % 200 == 0)
+                        {
+                            float current = read_current(_this->config.load_detect);
+                            current_averager.push(current);
+
+                            if (current_averager.is_window_full())
+                            {
+                                float average_current = current_averager.get_average(0);
+                                TRACE("average current %f", average_current)
+
+                                if (average_current < _this->config.load_detect.current_threshold)
+                                {
+                                ERROR("actuation no load detected, measured current %f, configured threshold %f", 
+                                    current, _this->config.load_detect.current_threshold)
+                                is_error = true;
+                                error_str = "actuation error: no load";
+                                break;
+                                }
+                            }
+                        }
+
+                        c_count++;
+                    }
+
+                    read_current(_this->config.load_detect);
+
+                    write_one_stop(_this->config);
+                    
+                    if (is_error == true || _this->_is_active == false)
+                    {
+                        if (_this->_is_active == false)
+                        {
+                            error_str = "actuation error: aborted (is_active==false)";
+                        }
+
+                        _this->status.error = error_str;
+                        ERROR(error_str)
+
+                        _this->actuate_ms = UINT32_MAX;
+                    }
+                    else
+                    {
+                        _this->actuate_ms += delta;
+                        _this->actuate_add_ups++;
+
+                        _this->status.error.clear();
+                    }
+                }
+            }
+            
+            _this->status.actuate_add_ups = _this->actuate_add_ups;
+
+            TRACE("after: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
+                (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
+        }
+        else
+        {
+            const char * error_str = "actuation error: invalid target open time (calibrate?)";
+            _this->status.error = error_str;
+            ERROR(error_str)
+        }
+    }
+    else
+    {
+        const char * error_str = "actuation error: invalid reference (calibrate?)";
+        _this->status.error = error_str;
+        ERROR(error_str)
+    }
 
     _this->status.state = ProportionalStatus::Channel::sIdle;
-
     TRACE("actuation_task: terminated, status %s", _this->status.as_string().c_str())
     vTaskDelete(NULL);
+}
+
+uint32_t ChannelHandler::flow_2_time(const ProportionalConfig::ValveProfile & _valve_profile,  
+                                     int flow_percent, uint32_t open_time, uint8_t from)
+{
+    if (flow_percent < 0)
+    {
+        flow_percent = 0;
+    }
+
+    if (flow_percent > 100)
+    {
+        flow_percent = 100;
+    }
+
+    if (_valve_profile.time_2_flow_rate.empty() == true)
+    {
+        DEBUG("flow_2_time for flow_percent %d is called with empty time_2_flow_rate_table", flow_percent)
+
+        uint32_t r = 0;
+
+        if (from == 0)
+        {
+            r = (flow_percent * open_time)/100;
+        }
+        else
+        {
+            r = ((100-flow_percent) * open_time)/100;
+        }
+
+        DEBUG("returning linear approximation %d (open_time %d, from %d)", (int) r, (int) open_time, (int) from)
+        return r;
+    }
+    else
+    {
+        DEBUG("flow_2_time for flow_percent %d is called with NON-empty time_2_flow_rate_table", flow_percent)
+
+        // the profile is prepended so that the last item's flow should always be 100
+
+        uint8_t prev_flow = 0;
+        uint8_t prev_time = 0;
+
+        for (size_t i=0; i<_valve_profile.time_2_flow_rate.size(); ++i)
+        {
+            uint8_t this_flow = _valve_profile.time_2_flow_rate[i].second;
+            uint8_t this_time = _valve_profile.time_2_flow_rate[i].first;
+
+            if (flow_percent >= prev_flow && flow_percent <= this_flow)
+            {
+                float flow_span = this_flow - prev_flow;
+                float time_span = this_time - prev_time;
+
+                float k = float(flow_percent - prev_flow)/flow_span;
+            
+                uint8_t time_percent = uint8_t(prev_time + time_span * k);
+
+                uint32_t r = 0;
+
+                if (from == 0)
+                {
+                    r = (time_percent * open_time)/100;
+                }
+                else
+                {
+                    r = ((100-time_percent) * open_time)/100;
+                }
+
+                DEBUG("returning span approximation %d percent / %d ms on span %d (open_time %d, from %d)", 
+                     (int) time_percent, (int) r, (int) i, (int) open_time, (int) from)
+
+                return r;
+            }
+
+            prev_flow = this_flow;
+            prev_time = this_time;
+        }        
+
+        // we shouldn't get here
+    }
+
+    return 0;
 }
 
 void ProportionalHandler::start(const ProportionalConfig &_config)
 {
     TRACE("starting proportional handler")
+    //Serial.write("DIRECT: starting proportional handler");
 
     if (_is_active)
     {
@@ -1066,6 +1809,8 @@ void ProportionalHandler::start(const ProportionalConfig &_config)
     config = _config;
 
     configure_channels();
+    read_data();
+
     // update_valve_profiles();  // already included in configure_channels
 
     _is_active = true;
@@ -1135,7 +1880,8 @@ void ProportionalHandler::task(void *parameter)
 
     TRACE("proportional_task: started")
 
-    uint32_t tmp=0;
+    const size_t SAVE_DATA_INTERVAL = 10; // seconds
+    unsigned long last_save_data_millis = millis();
 
     while (_this->_is_active)
     {
@@ -1161,8 +1907,9 @@ void ProportionalHandler::task(void *parameter)
                 auto action = _this->action_queue.front();
                 _this->action_queue.pop_front();
 
-                DEBUG("proportional task pop action from queue: channel %d, action %d, value %d",
-                      (int) action.first, (int) action.second.action, (int) action.second.value)
+                DEBUG("proportional task pop action from queue: channel %d, action %d, value %d, ref %d",
+                      (int) action.first, (int) action.second.action, (int) action.second.value, 
+                      (int) action.second.ref)
 
                 if (action.first >= 0 && action.first < _this->channel_handlers.size())
                 {
@@ -1172,7 +1919,7 @@ void ProportionalHandler::task(void *parameter)
                     }
                     else if (action.second.action == ActionAndValue::aActuate)
                     {
-                        _this->channel_handlers[action.first]->actuate(action.second.value);
+                        _this->channel_handlers[action.first]->actuate(action.second.value, action.second.ref);
                     }
                 }
             }
@@ -1180,14 +1927,22 @@ void ProportionalHandler::task(void *parameter)
 
         #endif // USE_ACTION_QUEUE
 
+        unsigned long now_millis = millis();
 
-        if (tmp%60 == 0)
+        if (now_millis < last_save_data_millis || 
+            (now_millis-last_save_data_millis)/1000 >= SAVE_DATA_INTERVAL)
         {
-            //TRACE("proportional task peep")
+            last_save_data_millis = now_millis;
+
+            if (_this->does_data_need_save())
+            {
+                TRACE("saving proportional data to EPROM")
+                _this->save_data();
+                _this->data_saved();
+            }
         }
 
         delay(1000);
-        tmp++;
     }
 
     _this->action_queue.clear();
@@ -1221,6 +1976,8 @@ void ProportionalHandler::configure_channels()
     size_t cc = config.channels.size() < channel_handlers.size() ? config.channels.size() : channel_handlers.size();
 
     auto it=channel_handlers.begin();  
+
+    ProportionalConfig::ValveProfile default_valve_profile;
     
     // configure matching count of channels / channel configs
 
@@ -1261,8 +2018,12 @@ void ProportionalHandler::configure_channels()
                 {
                     TRACE("setting valve profile %s on channel %i", (*vp).first.c_str(), (int) i)
                     (*it)->set_valve_profile((*vp).second);
+                    continue;
                 }
             }
+
+            TRACE("setting default valve profile on channel %i", (int) i)
+            (*it)->set_valve_profile(default_valve_profile);
         }
     }
 
@@ -1290,6 +2051,8 @@ void ProportionalHandler::configure_channels()
                     valve_profile = (*vp).second;
                 }
             }
+
+            // if no match for valve_profile, the one in a newly created channel is the default
 
             ChannelHandler * channel_handler = new ChannelHandler();
             channel_handler->start(config.channels[i+cc], valve_profile); 
@@ -1332,6 +2095,7 @@ void ProportionalHandler::update_valve_profiles()
     TRACE("update_valve_profiles")
 
     size_t i=0;
+    ProportionalConfig::ValveProfile default_valve_profile;
 
     for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it, ++i)        
     {
@@ -1345,8 +2109,12 @@ void ProportionalHandler::update_valve_profiles()
             {
                 TRACE("setting valve profile %s on channel %i", (*vp).first.c_str(), (int) i)
                 (*it)->set_valve_profile((*vp).second);
+                continue;
             }
         }
+
+        TRACE("setting default valve profile on channel %i", (int) i)
+        (*it)->set_valve_profile(default_valve_profile);
     }
 }
 
@@ -1378,9 +2146,9 @@ String ProportionalHandler::calibrate(size_t channel)
     return r;
 }
 
-String ProportionalHandler::actuate(size_t channel, uint8_t value)
+String ProportionalHandler::actuate(size_t channel, uint8_t value, uint8_t ref)
 {
-    TRACE("actuate channel %d to value %d", (int) channel, (int) value)
+    TRACE("actuate channel %d value %d ref %d", (int) channel, (int) value, (int) ref)
     String r;
 
     Lock lock(semaphore);
@@ -1389,12 +2157,12 @@ String ProportionalHandler::actuate(size_t channel, uint8_t value)
     {
         #ifdef USE_ACTION_QUEUE
 
-        DEBUG("push action to queue: channel %d, action aActuate, value %d", (int) channel, (int) value)
-        action_queue.push_back(std::make_pair(channel, ActionAndValue(ActionAndValue::aActuate, value)));
+        DEBUG("push action to queue: channel %d, action aActuate, value %d, ref %d", (int) channel, (int) value, (int) ref)
+        action_queue.push_back(std::make_pair(channel, ActionAndValue(ActionAndValue::aActuate, value, ref)));
 
         #else
 
-        return channel_handlers[channel]->actuate(value);
+        return channel_handlers[channel]->actuate(value, ref);
 
         #endif // USE_ACTION_QUEUE
     }
@@ -1404,6 +2172,183 @@ String ProportionalHandler::actuate(size_t channel, uint8_t value)
     }
 
     return r;
+}
+
+bool ProportionalHandler::does_data_need_save() 
+{
+    Lock lock(semaphore);
+
+    for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
+    {
+        if ((*it)->does_data_need_save())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ProportionalHandler::data_saved() 
+{
+    Lock lock(semaphore);
+
+    for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
+    {
+        (*it)->data_saved();
+    }
+}
+
+void ProportionalHandler::data_to_eprom(std::ostream &os) 
+{
+    Lock lock(semaphore);
+
+    DEBUG("ProportionalHandler data_to_eprom")
+
+    uint8_t eprom_version = (uint8_t)DATA_EPROM_VERSION;
+    os.write((const char *)&eprom_version, sizeof(eprom_version));
+
+    size_t count = channel_handlers.size();
+
+    os.write((const char *)&count, sizeof(count));
+
+    DEBUG("count %d", (int) count)
+
+   for (auto it = channel_handlers.begin(); it != channel_handlers.end(); ++it)
+    {
+        uint8_t value = (*it)->get_status().value;
+        os.write((const char *)&value, sizeof(value));
+        DEBUG("value %d", (int) value)
+    }
+}
+
+bool ProportionalHandler::data_from_eprom(std::istream &is)
+{
+    uint8_t eprom_version = DATA_EPROM_VERSION;
+
+    is.read((char *)&eprom_version, sizeof(eprom_version));
+
+    DEBUG("ProportionalHandler data_from_eprom")
+
+    if (eprom_version == DATA_EPROM_VERSION)
+    {
+        DEBUG("Version match")
+        size_t count = 0;
+        is.read((char *)&count, sizeof(count));
+
+        DEBUG("count %d", (int) count)
+
+        std::vector<uint8_t> values;
+        
+        if (count > channel_handlers.size())
+        {
+            count = channel_handlers.size();
+        }
+
+        for (size_t i=0; i<count; ++i)
+        {
+            uint8_t value = 100;
+            is.read((char *)&value, sizeof(value));
+            values.push_back(value);
+            DEBUG("value %d", (int) value)
+        }
+        
+        Lock lock(semaphore);
+
+        DEBUG("actuating to values being read")
+
+        for (size_t i=0; i<count && i<channel_handlers.size(); ++i)
+        {
+            actuate(i, values[i]);
+        } 
+    }
+    else
+    {
+        ERROR("Failed to read proportional data from EPROM: version mismatch, expected %d, found %d", (int)DATA_EPROM_VERSION, (int)eprom_version)
+        return false;
+    }
+
+    return !is.bad();
+}
+
+
+bool ProportionalHandler::read_data() 
+{
+    Lock lock(AutonomDataVolumeSemaphore);
+    EpromImage dataVolume(AUTONOM_DATA_VOLUME);
+
+    TRACE("ProportionalHandler reading data from EEPROM")
+
+    if (dataVolume.read() == true)
+    {
+        for (auto it = dataVolume.blocks.begin(); it != dataVolume.blocks.end(); ++it)
+        {
+            if(it->first == ftProportional)
+            {
+                const char * function_type_str = function_type_2_str((FunctionType) it->first);
+                TRACE("Found block type for function %s", function_type_str)
+
+                std::istringstream is(it->second);
+
+                if (data_from_eprom(is) == true)
+                {
+                    TRACE("Proportional data read success")
+                    return true;
+                }
+                else
+                {
+                    TRACE("Proportional data read failure")
+                }
+            }
+        }
+    }
+    else
+    {
+        ERROR("Cannot read EEPROM image (data)")
+    }
+
+    return false;
+}
+
+void ProportionalHandler::save_data() 
+{
+    Lock lock(AutonomDataVolumeSemaphore);
+    EpromImage dataVolume(AUTONOM_DATA_VOLUME);
+    dataVolume.read();
+
+    std::ostringstream os;
+
+    TRACE("Saving proportional data to EEPROM")
+    data_to_eprom(os);
+
+    std::string buffer = os.str();
+    TRACE("block size %d", (int) os.tellp())
+    
+    if (dataVolume.blocks.find((uint8_t) ftProportional) == dataVolume.blocks.end())
+    {
+        dataVolume.blocks.insert({(uint8_t) ftProportional, buffer});
+    }
+    else
+    {
+        if (dataVolume.blocks[(uint8_t) ftProportional] == buffer)
+        {
+            TRACE("Data identical, skip saving")
+            return;
+        }
+        else
+        {
+            dataVolume.blocks[(uint8_t) ftProportional] = buffer;
+        }
+    }
+    
+    if (dataVolume.write())
+    {
+        TRACE("Proportional data save success")
+    }
+    else
+    {
+        TRACE("Proportional data save failure")
+    }
 }
 
 void start_proportional_task(const ProportionalConfig &config)
@@ -1471,54 +2416,59 @@ String proportional_calibrate(const String & channel_str)
     return "Parameter error";
 }
 
-String proportional_actuate(const String & channel_str, const String & value_str)
+bool __is_number_or_empty(const String & value)
+{
+    for (size_t i=0; i<value.length(); ++i)
+    {
+        if (isdigit(value[i]) == false)
+        {
+            return false;
+        } 
+    }
+    return true;
+}
+
+String proportional_actuate(const String & channel_str, const String & value_str, const String & ref_str)
 {
     bool param_ok = true;
 
     if (!channel_str.isEmpty() && !value_str.isEmpty())
     {
-        for (size_t i=0; i<channel_str.length(); ++i)
+        param_ok = __is_number_or_empty(channel_str) && __is_number_or_empty(value_str) && 
+                   __is_number_or_empty(ref_str);
+
+        size_t channel = (size_t)  channel_str.toInt();
+        uint8_t value = (uint8_t)  value_str.toInt();
+        
+        uint8_t ref = UINT8_MAX;
+
+        if (!ref_str.isEmpty())
         {
-            if (isdigit(channel_str[i]) == false)
-            {
-                param_ok = false;
-                break;
-            } 
-        }
+            ref = (uint8_t)  ref_str.toInt();
+        }        
 
-        if (param_ok)
+        DEBUG("validating channel number, get_num_channels %d", (int)handler.get_num_channels())
+        if (channel >= 0 && channel < handler.get_num_channels())
         {
-            for (size_t i=0; i<value_str.length(); ++i)
+            if (value >= 0 && value <= 100)
             {
-                if (isdigit(value_str[i]) == false)
+                if (!(ref == 0 || ref == 100 || ref == UINT8_MAX))
                 {
-                    param_ok = false;
-                    break;
-                } 
-            }
-
-            if (param_ok)
-            {
-                size_t channel = (size_t)  channel_str.toInt();
-                size_t value = (size_t)  value_str.toInt();
-
-                DEBUG("validating channel number, get_num_channels %d", (int)handler.get_num_channels())
-                if (channel >= 0 && channel < handler.get_num_channels())
-                {
-                    if (value >= 0 && value <= 100)
-                    {
-                        return handler.actuate(channel, value);
-                    }
-                    else
-                    {
-                        return "Value out of range"; 
-                    }
+                    return "Optional ref could only be 0 or 100"; 
                 }
                 else
                 {
-                    return "Channel out of range"; 
+                    return handler.actuate(channel, value, ref);
                 }
             }
+            else
+            {
+                return "Value out of range"; 
+            }
+        }
+        else
+        {
+            return "Channel out of range"; 
         }
     }
     else

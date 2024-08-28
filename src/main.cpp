@@ -56,8 +56,18 @@ void connectWifi()
 
         if (wifi_connect_retry_count >= MAX_WIFI_CONNECT_RETRIES)
         {
+            wifi_connect_retry_count = 0;
+
+            #ifndef DINCLUDE_PROPORTIONAL
+
+            // we do not restart the target with proportional since it will start calibration / actuation
+            // procedures which will eventually destroy the actuator if repeated endlessly 
+
             ERROR("Max retries for WIFI connection reached, restarting....")
             ESP.restart();
+    
+            #endif
+
         }
     }
 
@@ -85,9 +95,11 @@ void setup()
     onboard_led_just_started = true;
 
     Serial.begin(9600);
+    //Serial.write("DIRECT: SERIAL BEGIN");
 
     EEPROM.begin(EEPROM_SIZE);
 
+    //delay(2000);
     restoreAutonom();
 
     initKnownNetworks(knownNetworks);

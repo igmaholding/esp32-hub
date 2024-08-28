@@ -256,12 +256,13 @@ String restActionAutonomProportionalCalibrate(const String & channel_str)
   return actionAutonomProportionalCalibrate(channel_str);
 }
 
-String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str)
+String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str,
+                                            const String & ref_str)
 {
   TRACE("REST action autonom proportional actuate")
-  DEBUG("channel %s, value %s", channel_str.c_str(), value_str.c_str())
+  DEBUG("channel %s, value %s ref %s", channel_str.c_str(), value_str.c_str(), ref_str.c_str())
 
-  return actionAutonomProportionalActuate(channel_str, value_str);
+  return actionAutonomProportionalActuate(channel_str, value_str, ref_str);
 }
 
 String restGet(const String & resetStamp) 

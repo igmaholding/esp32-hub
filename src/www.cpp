@@ -161,13 +161,28 @@ RESPONSE:
     }
 }]
 
-// ESP32-s2 + HIH5030
+// ESP32-s2 + HIH5030 --- OLD
 
 [{
     "function":"shower-guard", 
     "config":{
                 "motion":{"channel":{"gpio":38, "inverted":0, "debounce":250}},
                 "rh":{"hw":"HIH5030", "vad":{"channel":{"gpio":14, "atten":3}},"vdd":{"channel":{"gpio":15, "atten":3}}, "corr":0.0}, 
+                "temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0}, 
+                "lumi":{"ldr":{"channel":{"gpio":12, "atten":3}}, "corr":0.0, "threshold":50}, 
+                "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":120}, 
+                "fan":{"channel":{"gpio":34, "inverted":0, "coilon_active":1}, "rh_off":45, "rh_on":57, "mode":"auto", "linger":600} 
+
+    }
+}]
+
+// ESP32-s2 + HIH5030 --- PCB
+
+[{
+    "function":"shower-guard", 
+    "config":{
+                "motion":{"channel":{"gpio":38, "inverted":0, "debounce":250}},
+                "rh":{"hw":"HIH5030", "vad":{"channel":{"gpio":14, "atten":3}},"vdd":{"channel":{"gpio":16, "atten":3}}, "corr":0.0}, 
                 "temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0}, 
                 "lumi":{"ldr":{"channel":{"gpio":12, "atten":3}}, "corr":0.0, "threshold":50}, 
                 "light":{"channel":{"gpio":36, "inverted":0, "coilon_active":1}, "mode":"auto", "linger":120}, 
@@ -224,27 +239,46 @@ RESPONSE:
     }
 }]
 
+ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mode, e.g. not starting! not use!
+
 [{
     "function":"proportional", 
     "config":{
 
-                "channels":[
-                            {"one_a":{"gpio":3, "inverted":false},
-                             "one_b":{"gpio":5, "inverted":false},
-                             "open":{"gpio":9, "inverted":0, "debounce":250},
-                             "closed":{"gpio":7, "inverted":0, "debounce":250},
-                             "valve_profile":"xs15"
-                             }
-                           ],
-                
-
-                "valve_profiles":[
-                            {"name":"xs15", "open_time":15,
-                             "time_2_flow_rate":[[10,5],[30,40],[60,80], [100,100]]
-                            
+            "channels":[
+                        {"one_a":{"gpio":3, "inverted":false},
+                            "one_b":{"gpio":5, "inverted":false},
+                            "open":{"gpio":7, "inverted":false, "debounce":250},
+                            "closed":{"gpio":9, "inverted":false, "debounce":250},
+                            "load_detect":{"pin":{"gpio":1,"atten":0}, "resistance":1.0, "current_threshold":0.05},
+                            "valve_profile":"xs05"
+                            },
+                        {"one_a":{"gpio":2, "inverted":false},
+                            "one_b":{"gpio":4, "inverted":false},
+                            "open":{"gpio":6, "inverted":false, "debounce":250},
+                            "closed":{"gpio":8, "inverted":false, "debounce":250},
+                            "load_detect":{"pin":{"gpio":13,"atten":0}, "resistance":1.0, "current_threshold":0.05},
+                            "valve_profile":"xs05"
+                            },
+                        {"one_a":{"gpio":36, "inverted":false},
+                            "one_b":{"gpio":21, "inverted":false},
+                            "open":{"gpio":35, "inverted":false, "debounce":250},
+                            "closed":{"gpio":33, "inverted":false, "debounce":250},
+                            "load_detect":{"pin":{"gpio":16,"atten":0}, "resistance":1.0, "current_threshold":0.05},
+                            "valve_profile":"xs05"
                             }
-                            
-                            ]
+        
+
+                        ],
+            
+
+            "valve_profiles":[
+                        {"name":"xs05", "open_time":6.3,
+                            "time_2_flow_rate":[[25,2],[30,20],[60,75], [80,80], [100,100]]
+                        
+                        }
+                        
+                        ]
                 },
     
 }]
@@ -337,7 +371,7 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/proportional/actuate?channel=XX&value=YY
+URL: <base>/action/autonom/proportional/actuate?channel=XX&value=YY&ref=ZZ    ref is optional, 0 or 100 
 BODY: none
 RESPONSE: 
 {
@@ -410,12 +444,15 @@ RESPONSE:
         "bitrate": 128000,
         "title": "Du horst HIT RADIO FFH"
     }
+ {"proportional":{"channel[0]":{"state":"idle", "error":"", "value":22, "config_open_time":6.2, "calib_open_time":6.0}, ...}},   
  }
-
 
  'system': {'uptime': '46d 22h 02m 10s'}
 
 }
+
+NOTE for proportional: "calib_open_time" can be variated with "calib_open_2_closed_time" and "calib_closed_2_open_time",  
+subject to #ifdef
 
 */
 
@@ -740,13 +777,20 @@ void on_action_autonom_proportional_actuate()
 {
     String channel_str;
     String value_str;
+    String ref_str;
     String r;    
 
     if (webServer.hasArg("channel") == true && webServer.hasArg("value") == true)
     {
         channel_str = webServer.arg("channel");        
         value_str = webServer.arg("value");        
-        r = restActionAutonomProportionalActuate(channel_str, value_str);
+        
+        if (webServer.hasArg("ref") == true)
+        {
+            ref_str = webServer.arg("ref"); 
+        }
+        
+        r = restActionAutonomProportionalActuate(channel_str, value_str, ref_str);
     }
     else
     {

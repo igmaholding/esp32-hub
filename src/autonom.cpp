@@ -105,7 +105,7 @@ class AutonomTaskManager
         void reconfigureProportional(const ProportionalConfig &);
         
         String proportionalCalibrate(const String & channel_str);
-        String proportionalActuate(const String & channel_str, const String & value_str);
+        String proportionalActuate(const String & channel_str, const String & value_str, const String & ref_str);
 
         ProportionalStatus getProportionalStatus() const;
 
@@ -323,10 +323,11 @@ String AutonomTaskManager::proportionalCalibrate(const String & channel_str)
     return proportional_calibrate(channel_str);
 }
 
-String AutonomTaskManager::proportionalActuate(const String & channel_str, const String & value_str)
+String AutonomTaskManager::proportionalActuate(const String & channel_str, const String & value_str, 
+                                               const String & ref_str)
 {
     TRACE("proportionalActuate")
-    return proportional_actuate(channel_str, value_str);
+    return proportional_actuate(channel_str, value_str, ref_str);
 }
 
 #endif // INCLUDE_PROPORTIONAL
@@ -409,12 +410,13 @@ String setupAutonom(const JsonVariant & json)
 {
     TRACE("setupAutonom")
 
-    EpromImage epromImage;
+    Lock lock(AutonomConfigVolumeSemaphore);
+    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
 
-    EpromImage currentEpromImage;
-    currentEpromImage.read();
+    EpromImage currentConvigVolume(AUTONOM_CONFIG_VOLUME);
+    currentConvigVolume.read();
 
-    char buf[256];
+    char buf[512];
 
     #ifdef INCLUDE_SHOWERGUARD
     ShowerGuardConfig showerGuardConfig;
@@ -477,7 +479,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftShowerGuard, buffer});
+                            convigVolume.blocks.insert({(uint8_t) ftShowerGuard, buffer});
                         }
                         else
                         {
@@ -526,7 +528,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftKeybox, buffer});
+                            convigVolume.blocks.insert({(uint8_t) ftKeybox, buffer});
                         }
                         else
                         {
@@ -575,7 +577,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftAudio, buffer});
+                            convigVolume.blocks.insert({(uint8_t) ftAudio, buffer});
                         }
                         else
                         {
@@ -619,9 +621,9 @@ String setupAutonom(const JsonVariant & json)
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
                             // we need to preserve codes while reconfiguring, so have to load from the
-                            // currentEpromImage first
+                            // currentConvigVolume first
 
-                            for (auto it = currentEpromImage.blocks.begin(); it != currentEpromImage.blocks.end(); ++it)
+                            for (auto it = currentConvigVolume.blocks.begin(); it != currentConvigVolume.blocks.end(); ++it)
                             {
                                 const char * function_type_str = function_type_2_str((FunctionType) it->first);
 
@@ -658,7 +660,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftRfidLock, buffer});
+                            convigVolume.blocks.insert({(uint8_t) ftRfidLock, buffer});
                         }
                         else
                         {
@@ -707,7 +709,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks.insert({(uint8_t) ftProportional, buffer});
+                            convigVolume.blocks.insert({(uint8_t) ftProportional, buffer});
                         }
                         else
                         {
@@ -749,10 +751,10 @@ String setupAutonom(const JsonVariant & json)
 
         std::vector<uint8_t> added, removed, changed;
 
-        if (epromImage.diff(currentEpromImage, & added, & removed, & changed) == true)
+        if (convigVolume.diff(currentConvigVolume, & added, & removed, & changed) == true)
         {
             TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
-            epromImage.write();
+            convigVolume.write();
 
             for (auto it=added.begin(); it!=added.end(); ++it)
             {
@@ -887,18 +889,25 @@ void cleanupAutonom()
 {
     TRACE("cleanupAutonom")
 
-    // remove all functions from EEPROM 
+    // remove all functions/config from EEPROM 
 
-    EpromImage epromImage, currentEpromImage; 
-    currentEpromImage.read();
+    {Lock lock(AutonomConfigVolumeSemaphore);
+    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME), currentConvigVolume(AUTONOM_CONFIG_VOLUME); 
+    currentConvigVolume.read();
 
     std::vector<uint8_t> added, removed, changed;
 
-    if (epromImage.diff(currentEpromImage, & added, & removed, & changed) == true)
+    if (convigVolume.diff(currentConvigVolume, & added, & removed, & changed) == true)
     {
         TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
-        epromImage.write();
-    }
+        convigVolume.write();
+    }}
+
+    // remove all data from EEPROM
+
+    {Lock lock(AutonomDataVolumeSemaphore);
+    EpromImage dataVolume(AUTONOM_DATA_VOLUME); 
+    dataVolume.write();}
 
     // stop all running tasks
         
@@ -953,14 +962,15 @@ static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & cod
 
     if (autonomTaskManager.isRfidLockActive())
     {
-        EpromImage epromImage;
+        Lock lock(AutonomConfigVolumeSemaphore);
+        EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
         String r;
 
-        if (epromImage.read() == true)
+        if (convigVolume.read() == true)
         {
             TRACE("EPROM image read success")
 
-            for (auto it = epromImage.blocks.begin(); it != epromImage.blocks.end(); ++it)
+            for (auto it = convigVolume.blocks.begin(); it != convigVolume.blocks.end(); ++it)
             {
                 const char * function_type_str = function_type_2_str((FunctionType) it->first);
 
@@ -990,9 +1000,9 @@ static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & cod
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            epromImage.blocks[(uint8_t) ftRfidLock] = buffer;
+                            convigVolume.blocks[(uint8_t) ftRfidLock] = buffer;
 
-                            epromImage.write();
+                            convigVolume.write();
                         }
                         else
                         {
@@ -1084,12 +1094,13 @@ String actionAutonomProportionalCalibrate(const String & channel_str)
     #endif // INCLUDE_PROPORTIONAL
 }
 
-String actionAutonomProportionalActuate(const String & channel_str, const String & value_str)
+String actionAutonomProportionalActuate(const String & channel_str, const String & value_str, 
+                                        const String & ref_str)
 {
     #ifdef INCLUDE_PROPORTIONAL
     if (autonomTaskManager.isProportionalActive())
     {
-        return autonomTaskManager.proportionalActuate(channel_str, value_str);
+        return autonomTaskManager.proportionalActuate(channel_str, value_str, ref_str);
     }
     else
     {
@@ -1156,11 +1167,12 @@ void restoreAutonom()
 {
   TRACE("restoreAutonom")
 
-  EpromImage epromImage;
+    Lock lock(AutonomConfigVolumeSemaphore);
+    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
   
-  if (epromImage.read() == true)
+  if (convigVolume.read() == true)
   {
-      for (auto it = epromImage.blocks.begin(); it != epromImage.blocks.end(); ++it)
+      for (auto it = convigVolume.blocks.begin(); it != convigVolume.blocks.end(); ++it)
       {
           const char * function_type_str = function_type_2_str((FunctionType) it->first);
           TRACE("Restoring from EEPROM config for function %s", function_type_str)

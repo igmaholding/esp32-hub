@@ -14,7 +14,8 @@ String actionAutonomRfidLockAdd(const String & name_str, const String & code_str
                                 const String & type_str);
 
 String actionAutonomProportionalCalibrate(const String & channel_str);
-String actionAutonomProportionalActuate(const String & channel_str, const String & value_str);
+String actionAutonomProportionalActuate(const String & channel_str, const String & value_str, 
+                                        const String & ref_str);
 
 enum FunctionType
 {

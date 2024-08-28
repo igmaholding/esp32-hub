@@ -1266,7 +1266,13 @@ void ShowerGuardHandler::task(void *parameter)
                     {
                         if (_this->config.lumi.is_configured())
                         {
-                            light_luminance_mask = luminance_percent < _this->config.lumi.threshold;
+                            // we need to re-read luminance before we turn on the light; it might have been read
+                            // last time while the light still was on (because it is done at certain slots) and 
+                            // if the light rapidly changes from on-off-on then luminance can reflect what it was
+                            // at last light on 
+            
+                            luminance_percent = _this->read_lumi(_this->config.lumi);
+                            light_luminance_mask = luminance_percent < _this->config.lumi.threshold ? true : false;
                         }
                         else
                         {
