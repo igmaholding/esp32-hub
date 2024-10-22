@@ -531,6 +531,15 @@ bool ProportionalConfig::ValveProfile::from_eprom(std::istream &is)
 }
 
 
+/*
+    1. channel created, calibration ordered
+    2. value is actuated to where it ended up after calibration (0 or 100, unddefined if calibration failed)
+    3. eprom is read; read value is actuated
+
+    After calibration value needs to be set again manually!
+
+*/
+
 class ChannelHandler
 {
 public:
@@ -914,6 +923,10 @@ String ChannelHandler::actuate(uint8_t value, uint8_t ref)
             status.value = value;
             _value_needs_save = true;
         }
+        else
+        {
+            r = "Value unchanged, actuation skipped";
+        }   
 
         next_actuate_ref = ref; } 
 
@@ -921,28 +934,37 @@ String ChannelHandler::actuate(uint8_t value, uint8_t ref)
         // do not start new actuation at exact moment the one which is ongoing finishes
         // TODO?
 
-        if (status.state == ProportionalStatus::Channel::sIdle)
+        if (r.isEmpty())
         {
-            status.state = ProportionalStatus::Channel::sActuating;
+            if (status.state == ProportionalStatus::Channel::sIdle)
+            {
+                status.state = ProportionalStatus::Channel::sActuating;
 
-            TRACE("starting actuation task")
+                TRACE("starting actuation task")
 
-            xTaskCreate(
-                actuation_task,        // Function that should be called
-                "actuation",           // Name of the task (for debugging)
-                4096,                  // Stack size (bytes)
-                this,                  // Parameter to pass
-                1,                     // Task priority
-                NULL                   // Task handle
-            );
-       }
+                xTaskCreate(
+                    actuation_task,        // Function that should be called
+                    "actuation",           // Name of the task (for debugging)
+                    4096,                  // Stack size (bytes)
+                    this,                  // Parameter to pass
+                    1,                     // Task priority
+                    NULL                   // Task handle
+                );
+            }
+        }
     }
     else
     {
-        r = "Channel not active";
+        r = "Channel not active, actuation skipped";
     }
 
+    if (r.isEmpty() == false)
+    {
+        TRACE("%s", r.c_str())
+    }
+    
     TRACE("ChannelHandler::actuate returns, status %s", status.as_string().c_str())
+
     return r;
 }
 
@@ -1243,6 +1265,8 @@ void ChannelHandler::calibration_task(void *parameter)
             milliseconds[pass] = t_end + (ULONG_MAX - t_begin);
         }
 
+        _this->status.value = run_to[pass]; 
+
         TRACE("milliseconds %d", (int) milliseconds[pass])
         pass++;
 
@@ -1324,283 +1348,158 @@ void ChannelHandler::actuation_task(void *parameter)
 
     TRACE("actuation_task started, status %s", _this->status.as_string().c_str())
 
-    TRACE("before: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
-         (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
-
-    if (_this->actuate_ref == 0 || _this->actuate_ref == 100)
+    while(1)  // in case value has changed while actuation is ongoing
     {
-        uint32_t open_2_closed_time = 0;
-        uint32_t closed_2_open_time = 0;
+        TRACE("before: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
+            (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
 
-        #ifdef ASYMMETRICAL_OPEN_CLOSE
-
-        open_2_closed_time = _this->status.calib_open_2_closed_time;
-        closed_2_open_time = _this->status.calib_closed_2_open_time;
-
-        #else
-
-        open_2_closed_time = _this->status.calib_open_time;
-        closed_2_open_time = _this->status.calib_open_time;
-        
-        #endif
-
-        if (open_2_closed_time == 0)
+        if (_this->actuate_ref == 0 || _this->actuate_ref == 100)
         {
-            open_2_closed_time = _this->status.config_open_time;
-            TRACE("will use config_open_time instead of calibrated open_2_closed_time (==0)")
-        }
+            uint8_t current_status_value = _this->status.value;
 
-        if (closed_2_open_time == 0)
-        {
-            closed_2_open_time = _this->status.config_open_time;
-            TRACE("will use config_open_time instead of calibrated closed_2_open_time (==0)")
-        }
+            uint32_t open_2_closed_time = 0;
+            uint32_t closed_2_open_time = 0;
 
-        uint32_t open_time = _this->actuate_ref == 0 ? closed_2_open_time : open_2_closed_time; 
-        
-        if (open_2_closed_time > 0 && closed_2_open_time > 0)
-        {
-            bool should_restart = false;
+            #ifdef ASYMMETRICAL_OPEN_CLOSE
 
-            uint32_t new_actuate_ms_from_closed = flow_2_time(_this->valve_profile, _this->status.value, closed_2_open_time, 0);
-            uint32_t new_actuate_ms_from_open = flow_2_time(_this->valve_profile, _this->status.value, open_2_closed_time, 100);  
+            open_2_closed_time = _this->status.calib_open_2_closed_time;
+            closed_2_open_time = _this->status.calib_closed_2_open_time;
 
-            uint32_t new_actuate_ms = _this->actuate_ref == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;
-            int delta = (int) new_actuate_ms - (int) _this->actuate_ms;
+            #else
 
-            DEBUG("new_actuate_ms_from_closed %d, new_actuate_ms_from_open %d, new_actuate_ms %d, delta %d",
-                  (int) new_actuate_ms_from_closed, (int) new_actuate_ms_from_open, (int)new_actuate_ms, delta)
+            open_2_closed_time = _this->status.calib_open_time;
+            closed_2_open_time = _this->status.calib_open_time;
+            
+            #endif
 
-            if (_this->next_actuate_ref == 0 || _this->next_actuate_ref == 100)
+            if (open_2_closed_time == 0)
             {
-                DEBUG("will restart from %d due to explicit command", (int) _this->next_actuate_ref)
-                should_restart = true;
-            }
-            else if (_this->actuate_ms >= open_time || _this->actuate_add_ups >= _this->valve_profile.max_actuate_add_ups)
-            {
-                DEBUG("will restart due to invalid actuate_ms or add-up threshold")
-                should_restart = true;
-            }
-            else if (_this->status.value <= 10 || _this->status.value >= 90)
-            {
-                DEBUG("will restart due to value is too close to an end-state")
-                // if value is close enough to an end-state - dont bother with add-up, restart and go from there 
-                should_restart = true;
-            }
-            else
-            {
-                #ifdef ASYMMETRICAL_OPEN_CLOSE
-
-                // if we have asymmetrical times closed-2-open and open-2-closed then we should 
-                // only continue if delta is > 0
-
-                DEBUG("will restart due to negative delta")
-
-                if (delta < 0)
-                {
-                    should_restart = true;
-                }                
-                # endif // ASYMMETRICAL_OPEN_CLOSE
+                open_2_closed_time = _this->status.config_open_time;
+                TRACE("will use config_open_time instead of calibrated open_2_closed_time (==0)")
             }
 
-            size_t timeout_seconds = 30;
-
-            if (_this->valve_profile.open_time != 0)
+            if (closed_2_open_time == 0)
             {
-                timeout_seconds = _this->valve_profile.open_time * 2;    
+                closed_2_open_time = _this->status.config_open_time;
+                TRACE("will use config_open_time instead of calibrated closed_2_open_time (==0)")
             }
 
-            bool is_error = false;
-            const char * error_str = "";
-            Averager<float, 5> current_averager;
-
-            if (should_restart == true)
+            uint32_t open_time = _this->actuate_ref == 0 ? closed_2_open_time : open_2_closed_time; 
+            
+            if (open_2_closed_time > 0 && closed_2_open_time > 0)
             {
-                // we need to reset to a nearest end-state and start from there;
+                bool should_restart = false;
 
-                uint8_t go_through = 0;
+                uint32_t new_actuate_ms_from_closed = flow_2_time(_this->valve_profile, _this->status.value, closed_2_open_time, 0);
+                uint32_t new_actuate_ms_from_open = flow_2_time(_this->valve_profile, _this->status.value, open_2_closed_time, 100);  
+
+                uint32_t new_actuate_ms = _this->actuate_ref == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;
+                int delta = (int) new_actuate_ms - (int) _this->actuate_ms;
+
+                DEBUG("new_actuate_ms_from_closed %d, new_actuate_ms_from_open %d, new_actuate_ms %d, delta %d",
+                    (int) new_actuate_ms_from_closed, (int) new_actuate_ms_from_open, (int)new_actuate_ms, delta)
 
                 if (_this->next_actuate_ref == 0 || _this->next_actuate_ref == 100)
                 {
-                    go_through = _this->next_actuate_ref;
-                     _this->next_actuate_ref = UINT8_MAX;
+                    DEBUG("will restart from %d due to explicit command", (int) _this->next_actuate_ref)
+                    should_restart = true;
                 }
-                else if (_this->actuate_ms >= open_time)
+                else if (_this->actuate_ms >= open_time || _this->actuate_add_ups >= _this->valve_profile.max_actuate_add_ups)
                 {
-                    go_through = new_actuate_ms_from_closed < new_actuate_ms_from_open ? 0 : 100;
+                    DEBUG("will restart due to invalid actuate_ms or add-up threshold")
+                    should_restart = true;
                 }
-                else if (_this->status.value <= 10)
+                else if (_this->status.value <= 10 || _this->status.value >= 90)
                 {
-                    go_through = 0;
-                }
-                else if (_this->status.value >= 90)
-                {
-                    go_through = 100;
-                }
-                else
-                {
-                    // select nearest by minimum of go-time sum : go-to-end-state + go-to-new-value
-
-                    uint32_t go_time_to_closed = _this->actuate_ref == 0 ? _this->actuate_ms : (open_2_closed_time -_this->actuate_ms);
-                    uint32_t go_time_to_open = _this->actuate_ref == 100 ? _this->actuate_ms : (closed_2_open_time-_this->actuate_ms);
-
-                    uint32_t go_time_through_closed = go_time_to_closed + new_actuate_ms_from_closed;
-                    uint32_t go_time_through_open = go_time_to_open + new_actuate_ms_from_open;
-
-                    go_through = go_time_through_closed < go_time_through_open ? 0 : 100;
-                }
-
-                new_actuate_ms = go_through == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;                    
-                delta = new_actuate_ms;
-
-                TRACE("Will actuate going through state %d, go-time is %d ms", (int) go_through, (int) new_actuate_ms)                    
-                TRACE("Resetting to end-state %d", (int) go_through)                    
-
-                uint32_t t_begin = millis();
-                DigitalInputChannelConfig wait_on;
-
-                if (go_through == 100)
-                {
-                    wait_on = _this->config.open;
+                    DEBUG("will restart due to value is too close to an end-state")
+                    // if value is close enough to an end-state - dont bother with add-up, restart and go from there 
+                    should_restart = true;
                 }
                 else
                 {
-                    wait_on = _this->config.closed;
-                }
+                    #ifdef ASYMMETRICAL_OPEN_CLOSE
 
-                bool ready = read(wait_on);
+                    // if we have asymmetrical times closed-2-open and open-2-closed then we should 
+                    // only continue if delta is > 0
 
-                if (ready == false)
-                {
-                    if (go_through == 100)
+                    if (delta < 0)
                     {
-                        write_one_2_open(_this->config);
+                        should_restart = true;
+                        DEBUG("will restart due to negative delta")
+                    }                
+                    # endif // ASYMMETRICAL_OPEN_CLOSE
+                }
+
+                size_t timeout_seconds = 30;
+
+                if (_this->valve_profile.open_time != 0)
+                {
+                    timeout_seconds = _this->valve_profile.open_time * 2;    
+                }
+
+                bool is_error = false;
+                const char * error_str = "";
+                Averager<float, 5> current_averager;
+
+                if (should_restart == true)
+                {
+                    // we need to reset to a nearest end-state and start from there;
+
+                    uint8_t go_through = 0;
+
+                    if (_this->next_actuate_ref == 0 || _this->next_actuate_ref == 100)
+                    {
+                        go_through = _this->next_actuate_ref;
+                        _this->next_actuate_ref = UINT8_MAX;
                     }
+                    else if (_this->actuate_ms >= open_time)
+                    {
+                        go_through = new_actuate_ms_from_closed < new_actuate_ms_from_open ? 0 : 100;
+                    }
+                    /*else if (_this->status.value <= 10)
+                    {
+                        go_through = 0;
+                    }
+                    else if (_this->status.value >= 90)
+                    {
+                        go_through = 100;
+                    }*/
                     else
                     {
-                        write_one_2_closed(_this->config);
-                    }
-                }
+                        // select nearest by minimum of go-time sum : go-to-end-state + go-to-new-value
 
-                size_t c_count = 0;
+                        uint32_t go_time_to_closed = _this->actuate_ref == 0 ? _this->actuate_ms : (open_2_closed_time -_this->actuate_ms);
+                        uint32_t go_time_to_open = _this->actuate_ref == 100 ? _this->actuate_ms : (closed_2_open_time-_this->actuate_ms);
 
-                while(_this->_is_active == true)
-                {
-                    if (ready == true)
-                    {
-                        break;
+                        uint32_t go_time_through_closed = go_time_to_closed + new_actuate_ms_from_closed;
+                        uint32_t go_time_through_open = go_time_to_open + new_actuate_ms_from_open;
+
+                        go_through = go_time_through_closed < go_time_through_open ? 0 : 100;
                     }
 
-                    delay(1);
-                    ready = read(wait_on);
+                    new_actuate_ms = go_through == 0 ? new_actuate_ms_from_closed : new_actuate_ms_from_open;                    
+                    delta = new_actuate_ms;
 
-                    if (c_count % 200 == 0)
-                    {
-                        unsigned long t_probe = millis();
-                        unsigned long time_passed = 0;
-
-                        if (t_begin <= t_probe)
-                        {
-                            time_passed = t_probe - t_begin;
-                        }
-                        else
-                        {
-                            time_passed = t_probe + (ULONG_MAX - t_begin);
-                        }
-
-                        if (time_passed > timeout_seconds * 1000)
-                        {
-                            ERROR("actuation timeout detected, t_begin %d, t_probe %d", (int) t_begin, (int) t_probe)
-                            is_error = true;
-                            error_str = "actuation error: timeout at resetting to end-state";
-                            break;
-                        }
-
-                        float current = read_current(_this->config.load_detect);
-                        current_averager.push(current);
-
-                        if (current_averager.is_window_full())
-                        {
-                            float average_current = current_averager.get_average(0);
-                            TRACE("average current %f", average_current)
-
-                            if (average_current < _this->config.load_detect.current_threshold)
-                            {                        
-                                ERROR("actuation no load detected, measured current %f, configured threshold %f", 
-                                    current, _this->config.load_detect.current_threshold)
-                                is_error = true;
-                                error_str = "actuation error: no load";
-                                break;
-                            }
-                        }
-                    }
-                    
-                    c_count ++;
-                }
-
-                write_one_stop(_this->config);
-                
-                if (is_error == true || _this->_is_active == false)
-                {
-                    if  (_this->_is_active == false)
-                    {
-                        error_str = "actuation error: aborted (is_active==false)";
-                    }
-                    
-                    _this->status.error = error_str;
-                    ERROR(error_str)
-
-                    _this->actuate_ref = UINT8_MAX;
-                }
-                else
-                {
-                    _this->actuate_ref = go_through;    
-                    _this->status.error.clear();
-
-                    delay(1000); // let the motor stop
-                }
-
-                _this->actuate_ms = 0;
-                _this->actuate_add_ups = 0;
-            }
-            else
-            {
-                TRACE("Will actuate from current ref, delta %d ms", (int) delta)
-            }
-
-            if (_this->_is_active == true && is_error == false)
-            {
-                TRACE("Adding up delta %d ms", (int) delta)                    
-
-                // continue with add-up
-
-                if (abs(delta)  <= 50)
-                {                
-                    TRACE("Delta is too short - do nothing")                    
-
-                    // do nothing since we cannot get a predictable motor movement for this time (50ms)
-                    // neither update actuate_ms and actuate_add_ups
-                }
-                else
-                {
-                    read_current(_this->config.load_detect);
+                    TRACE("Will actuate going through state %d, go-time is %d ms", (int) go_through, (int) new_actuate_ms)                    
+                    TRACE("Resetting to end-state %d", (int) go_through)                    
 
                     uint32_t t_begin = millis();
+                    DigitalInputChannelConfig wait_on;
 
-                    if (_this->actuate_ref == 100)
+                    if (go_through == 100)
                     {
-                        if (delta > 0)
-                        {
-                            write_one_2_closed(_this->config);
-                        }
-                        else
-                        {
-                            write_one_2_open(_this->config);
-                        }
+                        wait_on = _this->config.open;
                     }
                     else
                     {
-                        if (delta > 0)
+                        wait_on = _this->config.closed;
+                    }
+
+                    bool ready = read(wait_on);
+
+                    if (ready == false)
+                    {
+                        if (go_through == 100)
                         {
                             write_one_2_open(_this->config);
                         }
@@ -1609,34 +1508,41 @@ void ChannelHandler::actuation_task(void *parameter)
                             write_one_2_closed(_this->config);
                         }
                     }
-
-                    read_current(_this->config.load_detect);
 
                     size_t c_count = 0;
 
                     while(_this->_is_active == true)
                     {
-                        delay(1);
-
-                        unsigned long t_probe = millis();
-                        unsigned long time_passed = 0;
-
-                        if (t_begin <= t_probe)
-                        {
-                            time_passed = t_probe - t_begin;
-                        }
-                        else
-                        {
-                            time_passed = t_probe + (ULONG_MAX - t_begin);
-                        }
-
-                        if (time_passed >= abs(delta))
+                        if (ready == true)
                         {
                             break;
                         }
 
+                        delay(1);
+                        ready = read(wait_on);
+
                         if (c_count % 200 == 0)
                         {
+                            unsigned long t_probe = millis();
+                            unsigned long time_passed = 0;
+
+                            if (t_begin <= t_probe)
+                            {
+                                time_passed = t_probe - t_begin;
+                            }
+                            else
+                            {
+                                time_passed = t_probe + (ULONG_MAX - t_begin);
+                            }
+
+                            if (time_passed > timeout_seconds * 1000)
+                            {
+                                ERROR("actuation timeout detected, t_begin %d, t_probe %d", (int) t_begin, (int) t_probe)
+                                is_error = true;
+                                error_str = "actuation error: timeout at resetting to end-state";
+                                break;
+                            }
+
                             float current = read_current(_this->config.load_detect);
                             current_averager.push(current);
 
@@ -1646,63 +1552,196 @@ void ChannelHandler::actuation_task(void *parameter)
                                 TRACE("average current %f", average_current)
 
                                 if (average_current < _this->config.load_detect.current_threshold)
-                                {
-                                ERROR("actuation no load detected, measured current %f, configured threshold %f", 
-                                    current, _this->config.load_detect.current_threshold)
-                                is_error = true;
-                                error_str = "actuation error: no load";
-                                break;
+                                {                        
+                                    ERROR("actuation no load detected, measured current %f, configured threshold %f", 
+                                        current, _this->config.load_detect.current_threshold)
+                                    is_error = true;
+                                    error_str = "actuation error: no load";
+                                    break;
                                 }
                             }
                         }
-
-                        c_count++;
+                        
+                        c_count ++;
                     }
-
-                    read_current(_this->config.load_detect);
 
                     write_one_stop(_this->config);
                     
                     if (is_error == true || _this->_is_active == false)
                     {
-                        if (_this->_is_active == false)
+                        if  (_this->_is_active == false)
                         {
                             error_str = "actuation error: aborted (is_active==false)";
                         }
-
+                        
                         _this->status.error = error_str;
                         ERROR(error_str)
 
-                        _this->actuate_ms = UINT32_MAX;
+                        _this->actuate_ref = UINT8_MAX;
                     }
                     else
                     {
-                        _this->actuate_ms += delta;
-                        _this->actuate_add_ups++;
-
+                        _this->actuate_ref = go_through;    
                         _this->status.error.clear();
+
+                        delay(1000); // let the motor stop
+                    }
+
+                    _this->actuate_ms = 0;
+                    _this->actuate_add_ups = 0;
+                }
+                else
+                {
+                    TRACE("Will actuate from current ref, delta %d ms", (int) delta)
+                }
+
+                if (_this->_is_active == true && is_error == false)
+                {
+                    TRACE("Adding up delta %d ms", (int) delta)                    
+
+                    // continue with add-up
+
+                    if (abs(delta)  <= 50)
+                    {                
+                        TRACE("Delta is too short - do nothing")                    
+
+                        // do nothing since we cannot get a predictable motor movement for this time (50ms)
+                        // neither update actuate_ms and actuate_add_ups
+                    }
+                    else
+                    {
+                        read_current(_this->config.load_detect);
+
+                        uint32_t t_begin = millis();
+
+                        if (_this->actuate_ref == 100)
+                        {
+                            if (delta > 0)
+                            {
+                                write_one_2_closed(_this->config);
+                            }
+                            else
+                            {
+                                write_one_2_open(_this->config);
+                            }
+                        }
+                        else
+                        {
+                            if (delta > 0)
+                            {
+                                write_one_2_open(_this->config);
+                            }
+                            else
+                            {
+                                write_one_2_closed(_this->config);
+                            }
+                        }
+
+                        read_current(_this->config.load_detect);
+
+                        size_t c_count = 0;
+
+                        while(_this->_is_active == true)
+                        {
+                            delay(1);
+
+                            unsigned long t_probe = millis();
+                            unsigned long time_passed = 0;
+
+                            if (t_begin <= t_probe)
+                            {
+                                time_passed = t_probe - t_begin;
+                            }
+                            else
+                            {
+                                time_passed = t_probe + (ULONG_MAX - t_begin);
+                            }
+
+                            if (time_passed >= abs(delta))
+                            {
+                                break;
+                            }
+
+                            if (c_count % 200 == 0)
+                            {
+                                float current = read_current(_this->config.load_detect);
+                                current_averager.push(current);
+
+                                if (current_averager.is_window_full())
+                                {
+                                    float average_current = current_averager.get_average(0);
+                                    TRACE("average current %f", average_current)
+
+                                    if (average_current < _this->config.load_detect.current_threshold)
+                                    {
+                                    ERROR("actuation no load detected, measured current %f, configured threshold %f", 
+                                        current, _this->config.load_detect.current_threshold)
+                                    is_error = true;
+                                    error_str = "actuation error: no load";
+                                    break;
+                                    }
+                                }
+                            }
+
+                            c_count++;
+                        }
+
+                        read_current(_this->config.load_detect);
+
+                        write_one_stop(_this->config);
+                        
+                        if (is_error == true || _this->_is_active == false)
+                        {
+                            if (_this->_is_active == false)
+                            {
+                                error_str = "actuation error: aborted (is_active==false)";
+                            }
+
+                            _this->status.error = error_str;
+                            ERROR(error_str)
+
+                            _this->actuate_ms = UINT32_MAX;
+                        }
+                        else
+                        {
+                            _this->actuate_ms += delta;
+                            _this->actuate_add_ups++;
+
+                            _this->status.error.clear();
+                        }
                     }
                 }
-            }
-            
-            _this->status.actuate_add_ups = _this->actuate_add_ups;
+                
+                _this->status.actuate_add_ups = _this->actuate_add_ups;
 
-            TRACE("after: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
-                (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
+                TRACE("after: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
+                    (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
+
+                if (current_status_value != _this->status.value)
+                {
+                    TRACE("actuation value has changed while actuation task was ongoing (current value %d, new value %d), "
+                        "restarting the task", (int) current_status_value, (int) _this->status.value)
+
+                    continue; // while(1)    
+                }
+            }
+            else
+            {
+                const char * error_str = "actuation error: invalid target open time (calibrate?)";
+                _this->status.error = error_str;
+                ERROR(error_str)
+            }
         }
         else
         {
-            const char * error_str = "actuation error: invalid target open time (calibrate?)";
+            const char * error_str = "actuation error: invalid reference (calibrate?)";
             _this->status.error = error_str;
             ERROR(error_str)
         }
-    }
-    else
-    {
-        const char * error_str = "actuation error: invalid reference (calibrate?)";
-        _this->status.error = error_str;
-        ERROR(error_str)
-    }
+    
+        break;
+
+    } // while(1)
 
     _this->status.state = ProportionalStatus::Channel::sIdle;
     TRACE("actuation_task: terminated, status %s", _this->status.as_string().c_str())
@@ -1722,67 +1761,100 @@ uint32_t ChannelHandler::flow_2_time(const ProportionalConfig::ValveProfile & _v
         flow_percent = 100;
     }
 
-    if (_valve_profile.time_2_flow_rate.empty() == true)
+    if (flow_percent == 0 || flow_percent == 100)
     {
-        DEBUG("flow_2_time for flow_percent %d is called with empty time_2_flow_rate_table", flow_percent)
+        // do this special handling even if the flow table is present to ensure end states
+        // are ancored to the actual end states on the valve
+
+        DEBUG("flow_2_time for flow_percent %d is called for an end state", flow_percent)
 
         uint32_t r = 0;
 
         if (from == 0)
         {
-            r = (flow_percent * open_time)/100;
+            r = flow_percent == 0 ? 0 : open_time;
         }
         else
         {
-            r = ((100-flow_percent) * open_time)/100;
+            r = flow_percent == 0 ? open_time : 0;
         }
 
-        DEBUG("returning linear approximation %d (open_time %d, from %d)", (int) r, (int) open_time, (int) from)
+        DEBUG("returning end state value %d (open_time %d, from %d)", (int) r, (int) open_time, (int) from)
         return r;
     }
     else
     {
-        DEBUG("flow_2_time for flow_percent %d is called with NON-empty time_2_flow_rate_table", flow_percent)
-
-        // the profile is prepended so that the last item's flow should always be 100
-
-        uint8_t prev_flow = 0;
-        uint8_t prev_time = 0;
-
-        for (size_t i=0; i<_valve_profile.time_2_flow_rate.size(); ++i)
+        if (_valve_profile.time_2_flow_rate.empty() == true)
         {
-            uint8_t this_flow = _valve_profile.time_2_flow_rate[i].second;
-            uint8_t this_time = _valve_profile.time_2_flow_rate[i].first;
+            DEBUG("flow_2_time for flow_percent %d is called with empty time_2_flow_rate_table", flow_percent)
 
-            if (flow_percent >= prev_flow && flow_percent <= this_flow)
+            uint32_t r = 0;
+
+            if (from == 0)
             {
-                float flow_span = this_flow - prev_flow;
-                float time_span = this_time - prev_time;
-
-                float k = float(flow_percent - prev_flow)/flow_span;
-            
-                uint8_t time_percent = uint8_t(prev_time + time_span * k);
-
-                uint32_t r = 0;
-
-                if (from == 0)
-                {
-                    r = (time_percent * open_time)/100;
-                }
-                else
-                {
-                    r = ((100-time_percent) * open_time)/100;
-                }
-
-                DEBUG("returning span approximation %d percent / %d ms on span %d (open_time %d, from %d)", 
-                     (int) time_percent, (int) r, (int) i, (int) open_time, (int) from)
-
-                return r;
+                r = (flow_percent * open_time)/100;
+            }
+            else
+            {
+                r = ((100-flow_percent) * open_time)/100;
             }
 
-            prev_flow = this_flow;
-            prev_time = this_time;
-        }        
+            DEBUG("returning linear approximation %d (open_time %d, from %d)", (int) r, (int) open_time, (int) from)
+            return r;
+        }
+        else
+        {
+            DEBUG("flow_2_time for flow_percent %d is called with NON-empty time_2_flow_rate_table", flow_percent)
+
+            // the profile is prepended so that the last item's flow should always be 100
+
+            uint8_t prev_flow = 0;
+            uint8_t prev_time = 0;
+
+            for (size_t i=0; i<_valve_profile.time_2_flow_rate.size(); ++i)
+            {
+                uint8_t this_flow = _valve_profile.time_2_flow_rate[i].second;
+                uint8_t this_time = _valve_profile.time_2_flow_rate[i].first;
+
+                // skip intervals where prev_time >= this_time or prev_flow >= this_flow
+                //
+                // this is a protection in case the table begins like this:
+                // [0,0], [15,0], ... which is usually the case for motorized which start to open after
+                // some go-time 
+
+                if (this_flow > prev_flow && this_time > prev_time)
+                {                        
+                    if (flow_percent >= prev_flow && flow_percent <= this_flow)
+                    {
+                        float flow_span = this_flow - prev_flow;
+                        float time_span = this_time - prev_time;
+
+                        float k = float(flow_percent - prev_flow)/flow_span;
+                    
+                        uint8_t time_percent = uint8_t(prev_time + time_span * k);
+
+                        uint32_t r = 0;
+
+                        if (from == 0)
+                        {
+                            r = (time_percent * open_time)/100;
+                        }
+                        else
+                        {
+                            r = ((100-time_percent) * open_time)/100;
+                        }
+
+                        DEBUG("returning span approximation %d percent / %d ms on span %d (open_time %d, from %d)", 
+                            (int) time_percent, (int) r, (int) i, (int) open_time, (int) from)
+
+                        return r;
+                    }
+                }
+
+                prev_flow = this_flow;
+                prev_time = this_time;
+            }        
+        }
 
         // we shouldn't get here
     }

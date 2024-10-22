@@ -23,7 +23,8 @@ enum FunctionType
     ftKeybox =       2,
     ftAudio =        3,
     ftRfidLock =     4,
-    ftProportional = 5
+    ftProportional = 5,
+    ftZero2ten =     6
 };
 
 const char * function_type_2_str(FunctionType);

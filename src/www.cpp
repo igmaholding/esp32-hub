@@ -273,7 +273,7 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
             
 
             "valve_profiles":[
-                        {"name":"xs05", "open_time":6.3,
+                        {"name":"xs05", "open_time":6.3, "max_actuate_add_ups":1,
                             "time_2_flow_rate":[[25,2],[30,20],[60,75], [80,80], [100,100]]
                         
                         }

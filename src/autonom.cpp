@@ -25,6 +25,10 @@
 #include <proportional.h>
 #endif
 
+#ifdef INCLUDE_ZERO2TEN
+#include <zero2ten.h>
+#endif
+
 #include <trace.h>
 #include <epromImage.h>
 
@@ -40,6 +44,7 @@ class AutonomTaskManager
             audioActive = false;
             rfidLockActive = false;
             proportionalActive = false;
+            zero2tenActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -113,6 +118,21 @@ class AutonomTaskManager
         
         #endif
 
+        #ifdef INCLUDE_ZERO2TEN
+        
+        void startZero2ten(const Zero2tenConfig &);
+        void stopZero2ten();
+        void reconfigureZero2ten(const Zero2tenConfig &);
+        
+        String zero2tenSet(const String & channel_str, const String & value_str);
+        String zero2tenGet(const String & channel_str);
+
+        Zero2tenStatus getZero2tenStatus() const;
+
+        bool isZero2tenActive() const { return zero2tenActive; }
+        
+        #endif
+
         void stopAll();
 
 
@@ -123,7 +143,7 @@ class AutonomTaskManager
         bool audioActive;
         bool rfidLockActive;
         bool proportionalActive;
-
+        bool zero2tenActive;
 };
 
 #ifdef INCLUDE_SHOWERGUARD
@@ -333,6 +353,49 @@ String AutonomTaskManager::proportionalActuate(const String & channel_str, const
 #endif // INCLUDE_PROPORTIONAL
 
 
+#ifdef INCLUDE_ZERO2TEN
+
+void AutonomTaskManager::startZero2ten(const Zero2tenConfig & config)
+{
+    TRACE("Starting autonom task zero2ten")
+    start_zero2ten_task(config);
+    zero2tenActive = true;
+}
+
+void AutonomTaskManager::stopZero2ten()
+{
+    TRACE("stopping autonom task zero2ten")
+    stop_zero2ten_task();
+    zero2tenActive = false;
+}
+
+void AutonomTaskManager::reconfigureZero2ten(const Zero2tenConfig & config)
+{
+    TRACE("reconfiguring autonom task zero2ten")
+    reconfigure_zero2ten(config);
+}
+
+Zero2tenStatus AutonomTaskManager::getZero2tenStatus() const
+{
+    TRACE("getZero2tenStatus")
+    return get_zero2ten_status();
+}
+
+String AutonomTaskManager::zero2tenSet(const String & channel_str, const String & value_str)
+{
+    TRACE("zero2tenSet")
+    return zero2ten_set(channel_str, value_str);
+}
+
+String AutonomTaskManager::zero2tenGet(const String & channel_str)
+{
+    TRACE("zero2tenGet")
+    return zero2ten_get(channel_str);
+}
+
+#endif // INCLUDE_ZERO2TEN
+
+
 void AutonomTaskManager::stopAll()
 {
     TRACE("stopping all autonom tasks")
@@ -381,6 +444,15 @@ void AutonomTaskManager::stopAll()
     }
 
     #endif
+
+    # if INCLUDE_ZERO2TEN
+
+    if (zero2tenActive)
+    {
+        stopZero2ten();
+    }
+
+    #endif
 }
 
 
@@ -401,6 +473,8 @@ const char * function_type_2_str(FunctionType ft)
             return "rfid-lock";
         case ftProportional:
             return "proportional";
+        case ftZero2ten:
+            return "zero2ten";
         default:
             return "<unknown>";    
     }
@@ -411,10 +485,10 @@ String setupAutonom(const JsonVariant & json)
     TRACE("setupAutonom")
 
     Lock lock(AutonomConfigVolumeSemaphore);
-    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
+    EpromImage configVolume(AUTONOM_CONFIG_VOLUME);
 
-    EpromImage currentConvigVolume(AUTONOM_CONFIG_VOLUME);
-    currentConvigVolume.read();
+    EpromImage currentConfigVolume(AUTONOM_CONFIG_VOLUME);
+    currentConfigVolume.read();
 
     char buf[512];
 
@@ -436,6 +510,10 @@ String setupAutonom(const JsonVariant & json)
 
     #ifdef INCLUDE_PROPORTIONAL
     ProportionalConfig proportionalConfig;
+    #endif
+
+    #ifdef INCLUDE_ZERO2TEN
+    Zero2tenConfig zero2tenConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -479,7 +557,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks.insert({(uint8_t) ftShowerGuard, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftShowerGuard, buffer});
                         }
                         else
                         {
@@ -528,7 +606,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks.insert({(uint8_t) ftKeybox, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftKeybox, buffer});
                         }
                         else
                         {
@@ -577,7 +655,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks.insert({(uint8_t) ftAudio, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftAudio, buffer});
                         }
                         else
                         {
@@ -621,9 +699,9 @@ String setupAutonom(const JsonVariant & json)
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
                             // we need to preserve codes while reconfiguring, so have to load from the
-                            // currentConvigVolume first
+                            // currentConfigVolume first
 
-                            for (auto it = currentConvigVolume.blocks.begin(); it != currentConvigVolume.blocks.end(); ++it)
+                            for (auto it = currentConfigVolume.blocks.begin(); it != currentConfigVolume.blocks.end(); ++it)
                             {
                                 const char * function_type_str = function_type_2_str((FunctionType) it->first);
 
@@ -660,7 +738,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks.insert({(uint8_t) ftRfidLock, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftRfidLock, buffer});
                         }
                         else
                         {
@@ -709,7 +787,7 @@ String setupAutonom(const JsonVariant & json)
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks.insert({(uint8_t) ftProportional, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftProportional, buffer});
                         }
                         else
                         {
@@ -734,6 +812,55 @@ String setupAutonom(const JsonVariant & json)
                     #endif // INCLUDE_PROPORTIONAL
                 }
                 else
+                if (function == "zero2ten")
+                {
+                    #ifdef INCLUDE_ZERO2TEN
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        zero2tenConfig.from_json(config_json);
+
+                        TRACE("function %s: zero2tenConfig.is_valid=%s", function.c_str(), (zero2tenConfig.is_valid() ? "true" : "false"))
+                        TRACE(zero2tenConfig.as_string().c_str())
+
+                        if (zero2tenConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            zero2tenConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            configVolume.blocks.insert({(uint8_t) ftZero2ten, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_ZERO2TEN
+                }
+                else
                 {
                     sprintf(buf, "function %s is unknown", function.c_str());
                     ERROR(buf)
@@ -751,10 +878,10 @@ String setupAutonom(const JsonVariant & json)
 
         std::vector<uint8_t> added, removed, changed;
 
-        if (convigVolume.diff(currentConvigVolume, & added, & removed, & changed) == true)
+        if (configVolume.diff(currentConfigVolume, & added, & removed, & changed) == true)
         {
             TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
-            convigVolume.write();
+            configVolume.write();
 
             for (auto it=added.begin(); it!=added.end(); ++it)
             {
@@ -790,6 +917,13 @@ String setupAutonom(const JsonVariant & json)
                 {
                     #ifdef INCLUDE_PROPORTIONAL
                     autonomTaskManager.startProportional(proportionalConfig);
+                    #endif
+                }
+                else
+                if (*it == ftZero2ten)
+                {
+                    #ifdef INCLUDE_ZERO2TEN
+                    autonomTaskManager.startZero2ten(zero2tenConfig);
                     #endif
                 }
 
@@ -830,6 +964,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopProportional();
                     #endif
                 }
+                else
+                if (*it == ftZero2ten)
+                {
+                    #ifdef INCLUDE_ZERO2TEN
+                    autonomTaskManager.stopZero2ten();
+                    #endif
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
@@ -867,6 +1008,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.reconfigureProportional(proportionalConfig);
                     #endif
                 }
+                else
+                if (*it == ftZero2ten)
+                {
+                    #ifdef INCLUDE_ZERO2TEN
+                    autonomTaskManager.reconfigureZero2ten(zero2tenConfig);
+                    #endif
+                }
             }
         }
         else
@@ -892,15 +1040,15 @@ void cleanupAutonom()
     // remove all functions/config from EEPROM 
 
     {Lock lock(AutonomConfigVolumeSemaphore);
-    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME), currentConvigVolume(AUTONOM_CONFIG_VOLUME); 
-    currentConvigVolume.read();
+    EpromImage configVolume(AUTONOM_CONFIG_VOLUME), currentConfigVolume(AUTONOM_CONFIG_VOLUME); 
+    currentConfigVolume.read();
 
     std::vector<uint8_t> added, removed, changed;
 
-    if (convigVolume.diff(currentConvigVolume, & added, & removed, & changed) == true)
+    if (configVolume.diff(currentConfigVolume, & added, & removed, & changed) == true)
     {
         TRACE("New autonom configuration is different from one stored in EEPROM: updating EEPROM image")
-        convigVolume.write();
+        configVolume.write();
     }}
 
     // remove all data from EEPROM
@@ -963,14 +1111,14 @@ static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & cod
     if (autonomTaskManager.isRfidLockActive())
     {
         Lock lock(AutonomConfigVolumeSemaphore);
-        EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
+        EpromImage configVolume(AUTONOM_CONFIG_VOLUME);
         String r;
 
-        if (convigVolume.read() == true)
+        if (configVolume.read() == true)
         {
             TRACE("EPROM image read success")
 
-            for (auto it = convigVolume.blocks.begin(); it != convigVolume.blocks.end(); ++it)
+            for (auto it = configVolume.blocks.begin(); it != configVolume.blocks.end(); ++it)
             {
                 const char * function_type_str = function_type_2_str((FunctionType) it->first);
 
@@ -1000,9 +1148,9 @@ static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & cod
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            convigVolume.blocks[(uint8_t) ftRfidLock] = buffer;
+                            configVolume.blocks[(uint8_t) ftRfidLock] = buffer;
 
-                            convigVolume.write();
+                            configVolume.write();
                         }
                         else
                         {
@@ -1114,6 +1262,44 @@ String actionAutonomProportionalActuate(const String & channel_str, const String
     #endif // INCLUDE_PROPORTIONAL
 }
 
+String actionAutonomZero2tenSet(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_ZERO2TEN
+    if (autonomTaskManager.isZero2tenActive())
+    {
+        return autonomTaskManager.zero2tenSet(channel_str, value_str);
+    }
+    else
+    {
+        return "zero2ten not active";
+    }
+    
+    #else
+
+    return "zero2ten is not built in currrent module";
+
+    #endif // INCLUDE_ZERO2TEN
+}
+
+String actionAutonomZero2tenGet(const String & channel_str)
+{
+    #ifdef INCLUDE_ZERO2TEN
+    if (autonomTaskManager.isZero2tenActive())
+    {
+        return autonomTaskManager.zero2tenGet(channel_str);
+    }
+    else
+    {
+        return "zero2ten not active";
+    }
+    
+    #else
+
+    return "zero2ten is not built in currrent module";
+
+    #endif // INCLUDE_ZERO2TEN
+}
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -1161,6 +1347,15 @@ void getAutonom(JsonVariant & json)
   }
 
   #endif
+
+  #ifdef INCLUDE_ZERO2TEN
+  if (autonomTaskManager.isZero2tenActive())
+  {
+        Zero2tenStatus status = autonomTaskManager.getZero2tenStatus();
+        status.to_json(json);
+  }
+
+  #endif
 }
 
 void restoreAutonom() 
@@ -1168,11 +1363,11 @@ void restoreAutonom()
   TRACE("restoreAutonom")
 
     Lock lock(AutonomConfigVolumeSemaphore);
-    EpromImage convigVolume(AUTONOM_CONFIG_VOLUME);
+    EpromImage configVolume(AUTONOM_CONFIG_VOLUME);
   
-  if (convigVolume.read() == true)
+  if (configVolume.read() == true)
   {
-      for (auto it = convigVolume.blocks.begin(); it != convigVolume.blocks.end(); ++it)
+      for (auto it = configVolume.blocks.begin(); it != configVolume.blocks.end(); ++it)
       {
           const char * function_type_str = function_type_2_str((FunctionType) it->first);
           TRACE("Restoring from EEPROM config for function %s", function_type_str)
@@ -1275,6 +1470,25 @@ void restoreAutonom()
                     TRACE("Config read failure")
                 }}
                 #endif // INCLUDE_PROPORTIONAL
+                break;
+
+              case ftZero2ten:
+                
+                #ifdef INCLUDE_ZERO2TEN
+                {Zero2tenConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startZero2ten(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_ZERO2TEN
                 break;
 
               default:

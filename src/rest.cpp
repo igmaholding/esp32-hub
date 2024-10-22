@@ -145,7 +145,7 @@ String restSetupPm(const String & body, const String & resetStamp)
 String restSetupAutonom(const String & body) 
 {
   TRACE("REST setup AUTONOM")
-  DEBUG(body.c_str())
+  //DEBUG(body.c_str())
 
   DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
 
