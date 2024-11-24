@@ -265,6 +265,38 @@ String restActionAutonomProportionalActuate(const String & channel_str, const St
   return actionAutonomProportionalActuate(channel_str, value_str, ref_str);
 }
 
+String restActionAutonomZero2tenCalibrateInput(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom zero2ten calibrate input")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomZero2tenCalibrateInput(channel_str, value_str);
+}
+
+String restActionAutonomZero2tenInput(const String & channel_str, String & value_str)
+{
+  TRACE("REST action autonom zero2ten input")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomZero2tenInput(channel_str, value_str);
+}
+
+String restActionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom zero2ten calibrate output")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomZero2tenCalibrateOutput(channel_str, value_str);
+}
+
+String restActionAutonomZero2tenOutput(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom zero2ten output")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomZero2tenOutput(channel_str, value_str);
+}
+
 String restGet(const String & resetStamp) 
 {
   TRACE("REST get")

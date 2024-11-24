@@ -283,6 +283,33 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
     
 }]
 
+[{
+    "function":"zero2ten", 
+    "config":{
+
+            "input_channels":[
+                            {"gpio":6,"atten":3, "ratio":0.20408},
+                            {"gpio":8,"atten":3, "ratio":0.20408},
+                            {"gpio":12,"atten":3, "ratio":0.20408},
+                            {"gpio":16,"atten":3, "ratio":0.20408}
+                        ],
+
+            "output_channels":[
+                        {"output":{"gpio":17, "inverted":false}, "max_voltage":10.0, "loopback":{"gpio":1,"atten":0, "ratio":0.20408}},
+                        {"output":{"gpio":13, "inverted":false}, "max_voltage":10.0, "loopback":{"gpio":3,"atten":0, "ratio":0.20408}},
+                        {"output":{"gpio":14, "inverted":false}, "max_voltage":10.0, "loopback":{"gpio":5,"atten":0, "ratio":0.20408}},
+                        {"output":{"gpio":18, "inverted":false}, "max_voltage":10.0, "loopback":{"gpio":7,"atten":0, "ratio":0.20408}}
+                        ],
+            
+
+            "applets":[
+                        {"name":"utk", "function":"temp2out", "input_channel":-1, "output_channel":0,"temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0},
+                         "map_table":[[-10, 5], [-5, 4], [0, 3], [5, 2], [10, 1]] }
+                    ]
+                },
+    
+}]
+
 REST POST cleanup
 URL: <base>/cleanup
 BODY: none 
@@ -372,6 +399,34 @@ RESPONSE:
 
 REST POST action
 URL: <base>/action/autonom/proportional/actuate?channel=XX&value=YY&ref=ZZ    ref is optional, 0 or 100 
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/zero2ten/calibrate_input?6channel=XX&value=YY // without the value -> uncalibrate
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/zero2ten/input?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/zero2ten/calibrate_output?channel=XX&value=YY  // without the value -> uncalibrate
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/zero2ten/output?channel=XX&value=YY
 BODY: none
 RESPONSE: 
 {
@@ -810,6 +865,139 @@ void on_action_autonom_proportional_actuate()
     onboard_led_paired = true;
 }
 
+void on_action_autonom_zero2ten_calibrate_input()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+
+        if (webServer.hasArg("value") == true)
+        {
+            value_str = webServer.arg("value");        
+        }
+        // otherwise - uncalibrate
+        
+        r = restActionAutonomZero2tenCalibrateInput(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_zero2ten_input()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        
+        r = restActionAutonomZero2tenInput(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"value\":\"" + value_str + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_zero2ten_calibrate_output()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+
+        if (webServer.hasArg("value") == true)
+        {
+            value_str = webServer.arg("value");        
+        }
+        // otherwise - uncalibrate
+
+        r = restActionAutonomZero2tenCalibrateOutput(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_zero2ten_output()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true && webServer.hasArg("value") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        value_str = webServer.arg("value");        
+        
+        r = restActionAutonomZero2tenOutput(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
 void on_reset()
 {
     String resetStamp;
@@ -904,6 +1092,10 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/add", HTTP_POST, on_action_autonom_rfid_lock_add);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/calibrate", HTTP_POST, on_action_autonom_proportional_calibrate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/actuate", HTTP_POST, on_action_autonom_proportional_actuate);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/calibrate_input", HTTP_POST, on_action_autonom_zero2ten_calibrate_input);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/input", HTTP_POST, on_action_autonom_zero2ten_input);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/calibrate_output", HTTP_POST, on_action_autonom_zero2ten_calibrate_output);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/output", HTTP_POST, on_action_autonom_zero2ten_output);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);

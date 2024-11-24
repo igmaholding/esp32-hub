@@ -17,6 +17,12 @@ String actionAutonomProportionalCalibrate(const String & channel_str);
 String actionAutonomProportionalActuate(const String & channel_str, const String & value_str, 
                                         const String & ref_str);
 
+String actionAutonomZero2tenCalibrateInput(const String & channel_str, const String & value_str);
+String actionAutonomZero2tenInput(const String & channel_str, String & value_str);
+String actionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
+String actionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
+
+
 enum FunctionType
 {
     ftShowerGuard =  1,

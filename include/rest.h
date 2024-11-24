@@ -22,6 +22,11 @@ String restActionAutonomProportionalCalibrate(const String & channel_str);
 String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str, 
                                             const String & ref_str);
 
+String restActionAutonomZero2tenCalibrateInput(const String & channel_str, const String & value_str);
+String restActionAutonomZero2tenInput(const String & channel_str, String & value_str);
+String restActionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
+String restActionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
+
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);
 

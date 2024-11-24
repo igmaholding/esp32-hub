@@ -124,8 +124,10 @@ class AutonomTaskManager
         void stopZero2ten();
         void reconfigureZero2ten(const Zero2tenConfig &);
         
-        String zero2tenSet(const String & channel_str, const String & value_str);
-        String zero2tenGet(const String & channel_str);
+        String zero2tenCalibrateInput(const String & channel_str, const String & value_str);
+        String zero2tenInput(const String & channel_str, String & value_str);
+        String zero2tenCalibrateOutput(const String & channel_str, const String & value_str);
+        String zero2tenOutput(const String & channel_str, const String & value_str);
 
         Zero2tenStatus getZero2tenStatus() const;
 
@@ -381,17 +383,30 @@ Zero2tenStatus AutonomTaskManager::getZero2tenStatus() const
     return get_zero2ten_status();
 }
 
-String AutonomTaskManager::zero2tenSet(const String & channel_str, const String & value_str)
+String AutonomTaskManager::zero2tenCalibrateInput(const String & channel_str, const String & value_str)
 {
-    TRACE("zero2tenSet")
-    return zero2ten_set(channel_str, value_str);
+    TRACE("zero2tenCalibrateOutput")
+    return zero2ten_calibrate_input(channel_str, value_str);
 }
 
-String AutonomTaskManager::zero2tenGet(const String & channel_str)
+String AutonomTaskManager::zero2tenInput(const String & channel_str, String & value_str)
 {
-    TRACE("zero2tenGet")
-    return zero2ten_get(channel_str);
+    TRACE("zero2tenInput")
+    return zero2ten_input(channel_str, value_str);
 }
+
+String AutonomTaskManager::zero2tenCalibrateOutput(const String & channel_str, const String & value_str)
+{
+    TRACE("zero2tenCalibrateOutput")
+    return zero2ten_calibrate_output(channel_str, value_str);
+}
+
+String AutonomTaskManager::zero2tenOutput(const String & channel_str, const String & value_str)
+{
+    TRACE("zero2tenOutput")
+    return zero2ten_output(channel_str, value_str);
+}
+
 
 #endif // INCLUDE_ZERO2TEN
 
@@ -1262,12 +1277,12 @@ String actionAutonomProportionalActuate(const String & channel_str, const String
     #endif // INCLUDE_PROPORTIONAL
 }
 
-String actionAutonomZero2tenSet(const String & channel_str, const String & value_str)
+String actionAutonomZero2tenCalibrateInput(const String & channel_str, const String & value_str)
 {
     #ifdef INCLUDE_ZERO2TEN
     if (autonomTaskManager.isZero2tenActive())
     {
-        return autonomTaskManager.zero2tenSet(channel_str, value_str);
+        return autonomTaskManager.zero2tenCalibrateInput(channel_str, value_str);
     }
     else
     {
@@ -1281,12 +1296,50 @@ String actionAutonomZero2tenSet(const String & channel_str, const String & value
     #endif // INCLUDE_ZERO2TEN
 }
 
-String actionAutonomZero2tenGet(const String & channel_str)
+String actionAutonomZero2tenInput(const String & channel_str, String & value_str)
 {
     #ifdef INCLUDE_ZERO2TEN
     if (autonomTaskManager.isZero2tenActive())
     {
-        return autonomTaskManager.zero2tenGet(channel_str);
+        return autonomTaskManager.zero2tenInput(channel_str, value_str);
+    }
+    else
+    {
+        return "zero2ten not active";
+    }
+    
+    #else
+
+    return "zero2ten is not built in currrent module";
+
+    #endif // INCLUDE_ZERO2TEN
+}
+
+String actionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_ZERO2TEN
+    if (autonomTaskManager.isZero2tenActive())
+    {
+        return autonomTaskManager.zero2tenCalibrateOutput(channel_str, value_str);
+    }
+    else
+    {
+        return "zero2ten not active";
+    }
+    
+    #else
+
+    return "zero2ten is not built in currrent module";
+
+    #endif // INCLUDE_ZERO2TEN
+}
+
+String actionAutonomZero2tenOutput(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_ZERO2TEN
+    if (autonomTaskManager.isZero2tenActive())
+    {
+        return autonomTaskManager.zero2tenOutput(channel_str, value_str);
     }
     else
     {

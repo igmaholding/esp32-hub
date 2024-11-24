@@ -4,6 +4,8 @@
 #include <digitalInputChannelConfig.h>
 #include <digitalOutputChannelConfig.h>
 #include <analogInputChannelConfig.h>
+#include <genericChannelConfig.h>
+#include <mapTable.h>
 #include <trace.h>
 
 #include <map>
@@ -164,6 +166,7 @@ class Zero2tenConfig
                 if (this != & channel)
                 {
                     AnalogInputChannelConfig::operator =(channel);
+                    ratio = channel.ratio;
                 }
 
                 return *this;
@@ -172,6 +175,7 @@ class Zero2tenConfig
             void clear()
             {
                 AnalogInputChannelConfig::clear();
+                ratio = 1;
             }
 
             void from_json(const JsonVariant & json);
@@ -186,14 +190,18 @@ class Zero2tenConfig
 
             bool operator == (const InputChannel & channel) const
             {
-                return AnalogInputChannelConfig::operator == (channel);
+                return AnalogInputChannelConfig::operator == (channel) && ratio == channel.ratio;
             }
 
             String as_string() const
             {
-                return AnalogInputChannelConfig::as_string();
+                return String("{channel=") + AnalogInputChannelConfig::as_string() + 
+                              ",ratio=" + String(ratio) + 
+                              "}";
             }
             
+            // external voltage to read voltage ratio, consider the atten
+            float ratio;  
         };
         
         struct OutputChannel
@@ -208,6 +216,7 @@ class Zero2tenConfig
                 if (this != & channel)
                 {
                     output = channel.output;
+                    max_voltage = channel.max_voltage;
                     loopback = channel.loopback;
                 }
 
@@ -217,6 +226,7 @@ class Zero2tenConfig
             void clear()
             {
                 output.clear();
+                max_voltage = 10;
                 loopback.clear();
             }
 
@@ -230,6 +240,12 @@ class Zero2tenConfig
                 if (output.is_valid() == false)
                 {
                     ERROR("output.is_valid() == false")
+                    return false;
+                }
+
+                if (max_voltage < 0)
+                {
+                    ERROR("max_voltage is invalid")
                     return false;
                 }
 
@@ -249,13 +265,15 @@ class Zero2tenConfig
             String as_string() const
             {
                 return String("{output=") + output.as_string() + 
+                              ",max_voltage=" + String(max_voltage) + 
                               ",loopback=" + loopback.as_string() + 
                               "}";
             }
             
 
-            DigitalOutputChannelConfig output;            
-            AnalogInputChannelConfig loopback;            
+            DigitalOutputChannelConfig output;
+            float max_voltage;  // the voltage that corresponds to 100% pwm duty (always on)            
+            InputChannel loopback;            
         };
 
         std::vector<InputChannel> input_channels;
@@ -263,6 +281,52 @@ class Zero2tenConfig
     
         struct Applet
         {
+            // the temperature config has DS18B20 device address and it is optional; if there is only
+            // one device present and no device address is configured - then the one found is used
+            //
+            // moreover, the channel also can be empty in which case temperature is not requested this
+            // way (e.g. in case of AHT10 himudity sensor which has its own temperature reading)
+
+            struct Temp
+            {
+                Temp()
+                {
+                    corr = 0;
+                }
+
+                void clear()
+                {
+                    corr = 0;
+                    addr.clear();
+                    channel.clear();
+                }
+
+                void from_json(const JsonVariant & json);
+
+                void to_eprom(std::ostream & os) const;
+                bool from_eprom(std::istream & is);
+
+                bool is_valid() const 
+                {
+                    return addr.isEmpty() ? true : channel.is_valid();
+                    // TODO: check addr OW format
+                }
+
+                bool operator == (const Temp & temp) const
+                {
+                    return channel == temp.channel && addr == temp.addr && corr == temp.corr;
+                }
+
+                String as_string() const
+                {
+                    return String("{channel=") + channel.as_string() + ", addr=\"" + addr + "\", corr=" + corr + "}";
+                }
+                
+                GenericChannelConfig channel;            
+                String addr;
+                float corr;
+            };
+            
             enum Function
             {
                 fTemp2out = 0
@@ -300,6 +364,8 @@ class Zero2tenConfig
                     function = applet.function;
                     input_channel = applet.input_channel;
                     output_channel = applet.output_channel;
+                    temp = applet.temp;
+                    map_table = applet.map_table;
                 }
 
                 return *this;
@@ -310,6 +376,8 @@ class Zero2tenConfig
                 function = Function(-1);
                 input_channel = uint8_t(-1);
                 output_channel = uint8_t(-1);
+                temp.clear();
+                map_table.clear();
             }
             
             void from_json(const JsonVariant & json);
@@ -319,7 +387,30 @@ class Zero2tenConfig
 
             bool is_valid() const 
             {
-                return function == fTemp2out;
+                if (function == fTemp2out)
+                {
+                    if (output_channel == uint8_t(-1))
+                    {
+                        ERROR("applet.output_channel is not valid")
+                        return false;
+                    }
+
+                    if (temp.is_valid() == false)
+                    {
+                        ERROR("applet.temp.is_valid()==false")
+                        return false;
+                    }
+   
+                    if (map_table.is_empty() || !map_table.can_x_to_y())
+                    {
+                        ERROR("applet.map_table.is_valid()==false")
+                        return false;
+                    }
+
+                    return true;
+                }
+            
+                return false;
             }
 
             bool operator == (const Applet & applet) const
@@ -339,14 +430,26 @@ class Zero2tenConfig
                     return false;
                 }
 
+                if (!(temp == applet.temp))
+                {
+                    return false;
+                }
+
+                if (!(map_table == applet.map_table))
+                {
+                    return false;
+                }
+
                 return true;
             }
 
             String as_string() const
             {
                 String r = String("{") + "function=" + function_2_str(function) + 
-                              "input_channel=" + String((int) input_channel) +
-                              "output_channel=" + String((int) output_channel) +
+                              ", input_channel=" + String((int) input_channel) +
+                              ", output_channel=" + String((int) output_channel) +
+                              ", temp=" + temp.as_string() +
+                              ", map_table=...";
 
                 r += "}";
 
@@ -355,11 +458,24 @@ class Zero2tenConfig
             
             Function function;
             uint8_t input_channel;  
-            uint8_t output_channel;  
-        };
+            uint8_t output_channel; 
+            Temp temp;
+            MapTable map_table;
+         };
 
         std::map<String, Applet> applets;
 };
+
+
+inline void _set_not_calibrated(float & value)
+{
+    value = -1;
+}
+
+inline bool _is_calibrated(float value)
+{
+    return value > 0;
+}
 
 
 struct Zero2tenStatus
@@ -370,7 +486,8 @@ struct Zero2tenStatus
 
     String as_string() const
     {
-        String r = "{input_channels=[";
+        String r = "{status=\"" + status + "\"" 
+                   ", input_channels=[";
 
         for (auto it=input_channels.begin(); it!= input_channels.end(); ++it)
         {
@@ -394,6 +511,21 @@ struct Zero2tenStatus
             }
         }
 
+        r += "], applets=[";
+
+        for (auto it=applets.begin(); it!= applets.end(); ++it)
+        {
+            r += "\"" + it->first + "\":" + it->second.as_string();
+
+            auto it_tmp = it;
+            ++it_tmp;
+
+            if (it_tmp != applets.end())
+            {
+                r += ",";
+            }
+        }
+
         r += "]}";
 
 
@@ -404,6 +536,8 @@ struct Zero2tenStatus
     {
         json.createNestedObject("zero2ten");
         JsonVariant jsonVariant = json["zero2ten"];
+
+        jsonVariant["status"] = status;
 
         jsonVariant.createNestedObject("input");
         JsonVariant inputJson = jsonVariant["input"];
@@ -430,21 +564,35 @@ struct Zero2tenStatus
                 it->to_json(outputJson, i);
             }
         }
+
+        jsonVariant.createNestedObject("applet");
+        JsonVariant appletJson = jsonVariant["applet"];
+
+        for (auto it = applets.begin(); it != applets.end(); ++it, ++i)
+        {
+            it->second.to_json(appletJson, it->first);
+        }
     }
 
     struct Channel
     {
-        Channel()
-        {
-            reset();
-        }
-
         enum Type
         {
             tUninitialized = -1,
             tInput = 0,
             tOutput = 1    
         };
+
+        Channel()
+        {
+            reset();
+        }
+
+        Channel(Type _type)
+        {
+            reset();
+            type = _type;
+        }
 
         static const char * type_2_str(Type _type) 
         {
@@ -462,12 +610,18 @@ struct Zero2tenStatus
         {
             type = tUninitialized;
             value = 0;
+            calibration_coefficient = -1;
+            duty = 0;
+            status.clear();
         }
 
         String as_string() const
         {
             String r = String("{") + "type=" + type_2_str(type) + 
-                       ", value=" + String((int)value) +
+                       ", value=" + String(value) +
+                       ", calibration_coefficient=" + String(calibration_coefficient) +
+                       ", duty=" + String(duty) +
+                       ", status=" + status +
                        "}";
             return r;           
         }
@@ -481,14 +635,74 @@ struct Zero2tenStatus
 
             jsonVariant["type"] = type_2_str(type);
             jsonVariant["value"] = value;
+            jsonVariant["calibration_coefficient"] = calibration_coefficient;
+            jsonVariant["duty"] = duty;
+            jsonVariant["status"] = status;
         }
 
-        uint8_t value;
+        float value;
+        float calibration_coefficient;
+        float duty;
         Type type;
+        String status;
     };
     
+    struct Applet
+    {
+        Applet()
+        {
+            clear();
+        }
+
+        void clear()
+        {
+            output_value = 0;
+            temp = 0;
+            function.clear();
+            time.clear();
+            temp_addr.clear();
+            status.clear();
+        }
+
+        String as_string() const
+        {
+            String r = String("{") + "function=" + function + 
+                       ", time=" + time +
+                       ", temp_addr=" + temp_addr +
+                       ", temp=" + String(temp) +
+                       ", temp=" + String(temp) +
+                       ", output_value=" + String(output_value) +
+                       ", status=" + status +
+                       "}";
+            return r;           
+        }
+
+
+        void to_json(JsonVariant & json, const String & name)
+        {
+            json.createNestedObject(name);
+            JsonVariant jsonVariant = json[name];
+
+            jsonVariant["function"] = function;
+            jsonVariant["time"] = time;
+            jsonVariant["temp_addr"] = temp_addr;
+            jsonVariant["temp"] = temp;
+            jsonVariant["output_value"] = output_value;
+            jsonVariant["status"] = status;
+        }
+
+        String function;
+        String time;
+        String temp_addr;
+        float temp;
+        float output_value;
+        String status;
+    };
+
     std::vector<Channel> input_channels;
     std::vector<Channel> output_channels;
+    std::map<String, Applet> applets;
+    String status;
 };
 
 void start_zero2ten_task(const Zero2tenConfig &);
@@ -497,8 +711,10 @@ Zero2tenStatus get_zero2ten_status();
 
 void reconfigure_zero2ten(const Zero2tenConfig &);
 
-String zero2ten_set(const String & channel_str, const String & value_str);
-String zero2ten_get(const String & channel_str);
+String zero2ten_calibrate_input(const String & channel_str, const String & value_str);
+String zero2ten_input(const String & channel_str, String & value_str);
+String zero2ten_calibrate_output(const String & channel_str, const String & value_str);
+String zero2ten_output(const String & channel_str, const String & value_str);
 
 
 #endif // INCLUDE_ZERO2TEN
