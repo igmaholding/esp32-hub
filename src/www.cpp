@@ -303,8 +303,22 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
             
 
             "applets":[
-                        {"name":"utk", "function":"temp2out", "input_channel":-1, "output_channel":0,"temp":{"channel":{"gpio":4}, "addr":"28-0300a2794313", "corr":0},
-                         "map_table":[[-10, 5], [-5, 4], [0, 3], [5, 2], [10, 1]] }
+                        {"name":"utk", "function":"temp2out", "input_channel":-1, "output_channel":0,"temp":{"channel":{"gpio":4}, "corr":0},
+                         "map_table":[    // RAF-1, 20..70C == 0..10V
+                                        [-35, 9.4],
+                                        [-30, 9.2],
+                                        [-25, 8.9],
+                                        [-20, 8.4],
+                                        [-15, 7.6],
+                                        [-10, 6.6],
+                                        [-5, 5.2],
+                                        [0, 4.2],
+                                        [5, 3.2],
+                                        [10, 2.2],
+                                        [15, 1.4],
+                                        [20, 0]
+                                        ]
+                        }
                     ]
                 },
     

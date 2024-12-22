@@ -1063,11 +1063,11 @@ void ChannelHandler::calibration_task(void *parameter)
     // try to minimize go-time by either going to another end-state if the motor is in one of the end-states
     // or making to end-state + open-close cycle so that we end up closest to the value 
 
-    size_t timeout_seconds = 30;
+    size_t timeout_seconds = 40;
 
     if (_this->valve_profile.open_time != 0)
     {
-        timeout_seconds = _this->valve_profile.open_time * 2;    
+        timeout_seconds = _this->valve_profile.open_time * 4;    
     }
 
     DEBUG("calibration timeout set to %d seconds", (int) timeout_seconds)
