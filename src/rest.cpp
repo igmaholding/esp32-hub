@@ -297,6 +297,54 @@ String restActionAutonomZero2tenOutput(const String & channel_str, const String 
   return actionAutonomZero2tenOutput(channel_str, value_str);
 }
 
+String restActionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom phase-changer calibrate V")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerCalibrateV(channel_str, value_str);
+}
+
+String restActionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom phase-changer calibrate I High")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerCalibrateIHigh(channel_str, value_str);
+}
+
+String restActionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+{
+  TRACE("REST action autonom phase-changer calibrate I Low")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerCalibrateILow(channel_str, value_str);
+}
+
+String restActionAutonomPhaseChangerInputV(const String & channel_str, String & value_str)
+{
+  TRACE("REST action autonom zero2ten input V")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerInputV(channel_str, value_str);
+}
+
+String restActionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str)
+{
+  TRACE("REST action autonom zero2ten input I High")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerInputIHigh(channel_str, value_str);
+}
+
+String restActionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str)
+{
+  TRACE("REST action autonom zero2ten input I Low")
+  DEBUG("channel %s", channel_str.c_str())
+
+  return actionAutonomPhaseChangerInputILow(channel_str, value_str);
+}
+
 String restGet(const String & resetStamp) 
 {
   TRACE("REST get")

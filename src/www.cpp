@@ -324,6 +324,34 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
     
 }]
 
+[{
+    "function":"phase-changer", 
+    "config":{
+
+            "input_v_channels":[
+                            {"addr":0x40,"channel":0, "ratio":0.20408},
+                            {"addr":0x40,"channel":1, "ratio":0.20408},
+                            {"addr":0x40,"channel":2, "ratio":0.20408}
+                        ],
+
+            "input_i_high_channels":[
+                            {"addr":0x41,"channel":0, "ratio":0.20408},
+                            {"addr":0x41,"channel":1, "ratio":0.20408},
+                            {"addr":0x41,"channel":2, "ratio":0.20408}
+                        ],
+
+            "input_i_low_channels":[
+                            {"gpio":8,"atten":3, "ratio":0.20408},
+                            {"gpio":6,"atten":3, "ratio":0.20408},
+                            {"gpio":12,"atten":3, "ratio":0.20408}
+                        ],
+
+            "applets":[
+                    ]
+                },
+    
+}]
+
 REST POST cleanup
 URL: <base>/cleanup
 BODY: none 
@@ -441,6 +469,48 @@ RESPONSE:
 
 REST POST action
 URL: <base>/action/autonom/zero2ten/output?channel=XX&value=YY
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/calibrate_v?channel=XX&value=YY // without the value -> uncalibrate
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/calibrate_i_high?channel=XX&value=YY // without the value -> uncalibrate
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/calibrate_i_low?channel=XX&value=YY // without the value -> uncalibrate
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/input_v?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/input_i_high?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/phase-changer/input_i_low?channel=XX
 BODY: none
 RESPONSE: 
 {
@@ -1012,6 +1082,204 @@ void on_action_autonom_zero2ten_output()
     onboard_led_paired = true;
 }
 
+void on_action_autonom_phase_changer_calibrate_v()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+
+        if (webServer.hasArg("value") == true)
+        {
+            value_str = webServer.arg("value");        
+        }
+        // otherwise - uncalibrate
+        
+        r = restActionAutonomPhaseChangerCalibrateV(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_phase_changer_calibrate_i_high()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+
+        if (webServer.hasArg("value") == true)
+        {
+            value_str = webServer.arg("value");        
+        }
+        // otherwise - uncalibrate
+        
+        r = restActionAutonomPhaseChangerCalibrateIHigh(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_phase_changer_calibrate_i_low()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+
+        if (webServer.hasArg("value") == true)
+        {
+            value_str = webServer.arg("value");        
+        }
+        // otherwise - uncalibrate
+        
+        r = restActionAutonomPhaseChangerCalibrateILow(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_phase_changer_input_v()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        
+        r = restActionAutonomPhaseChangerInputV(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"value\":\"" + value_str + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_phase_changer_input_i_high()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        
+        r = restActionAutonomPhaseChangerInputIHigh(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"value\":\"" + value_str + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_phase_changer_input_i_low()
+{
+    String channel_str;
+    String value_str;
+    String r;    
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel_str = webServer.arg("channel");        
+        
+        r = restActionAutonomPhaseChangerInputILow(channel_str, value_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"value\":\"" + value_str + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
 void on_reset()
 {
     String resetStamp;
@@ -1110,6 +1378,12 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/input", HTTP_POST, on_action_autonom_zero2ten_input);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/calibrate_output", HTTP_POST, on_action_autonom_zero2ten_calibrate_output);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/output", HTTP_POST, on_action_autonom_zero2ten_output);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_v", HTTP_POST, on_action_autonom_phase_changer_calibrate_v);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_i_high", HTTP_POST, on_action_autonom_phase_changer_calibrate_i_high);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_i_low", HTTP_POST, on_action_autonom_phase_changer_calibrate_i_low);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_v", HTTP_POST, on_action_autonom_phase_changer_input_v);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_i_high", HTTP_POST, on_action_autonom_phase_changer_input_i_high);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_i_low", HTTP_POST, on_action_autonom_phase_changer_input_i_low);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);

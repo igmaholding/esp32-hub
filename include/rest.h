@@ -27,6 +27,13 @@ String restActionAutonomZero2tenInput(const String & channel_str, String & value
 String restActionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
 String restActionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
 
+String restActionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str);
+String restActionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str);
+String restActionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str);
+String restActionAutonomPhaseChangerInputV(const String & channel_str, String & value_str);
+String restActionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str);
+String restActionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str);
+
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);
 

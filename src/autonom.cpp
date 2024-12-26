@@ -29,6 +29,10 @@
 #include <zero2ten.h>
 #endif
 
+#ifdef INCLUDE_PHASECHANGER
+#include <phaseChanger.h>
+#endif
+
 #include <trace.h>
 #include <epromImage.h>
 
@@ -45,6 +49,7 @@ class AutonomTaskManager
             rfidLockActive = false;
             proportionalActive = false;
             zero2tenActive = false;
+            phaseChangerActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -135,6 +140,25 @@ class AutonomTaskManager
         
         #endif
 
+        #ifdef INCLUDE_PHASECHANGER
+        
+        void startPhaseChanger(const PhaseChangerConfig &);
+        void stopPhaseChanger();
+        void reconfigurePhaseChanger(const PhaseChangerConfig &);
+        
+        String phaseChangerCalibrateV(const String & channel_str, const String & value_str);
+        String phaseChangerCalibrateIHigh(const String & channel_str, const String & value_str);
+        String phaseChangerCalibrateILow(const String & channel_str, const String & value_str);
+        String phaseChangerInputV(const String & channel_str, String & value_str);
+        String phaseChangerInputIHigh(const String & channel_str, String & value_str);
+        String phaseChangerInputILow(const String & channel_str, String & value_str);
+
+        PhaseChangerStatus getPhaseChangerStatus() const;
+
+        bool isPhaseChangerActive() const { return phaseChangerActive; }
+        
+        #endif
+
         void stopAll();
 
 
@@ -146,6 +170,7 @@ class AutonomTaskManager
         bool rfidLockActive;
         bool proportionalActive;
         bool zero2tenActive;
+        bool phaseChangerActive;
 };
 
 #ifdef INCLUDE_SHOWERGUARD
@@ -385,7 +410,7 @@ Zero2tenStatus AutonomTaskManager::getZero2tenStatus() const
 
 String AutonomTaskManager::zero2tenCalibrateInput(const String & channel_str, const String & value_str)
 {
-    TRACE("zero2tenCalibrateOutput")
+    TRACE("zero2tenCalibrateInput")
     return zero2ten_calibrate_input(channel_str, value_str);
 }
 
@@ -409,6 +434,72 @@ String AutonomTaskManager::zero2tenOutput(const String & channel_str, const Stri
 
 
 #endif // INCLUDE_ZERO2TEN
+
+#ifdef INCLUDE_PHASECHANGER
+
+void AutonomTaskManager::startPhaseChanger(const PhaseChangerConfig & config)
+{
+    TRACE("Starting autonom task phaseChanger")
+    start_phase_changer_task(config);
+    zero2tenActive = true;
+}
+
+void AutonomTaskManager::stopPhaseChanger()
+{
+    TRACE("stopping autonom task phaseChanger")
+    stop_phase_changer_task();
+    zero2tenActive = false;
+}
+
+void AutonomTaskManager::reconfigurePhaseChanger(const PhaseChangerConfig & config)
+{
+    TRACE("reconfiguring autonom task phaseChanger")
+    reconfigure_phase_changer(config);
+}
+
+PhaseChangerStatus AutonomTaskManager::getPhaseChangerStatus() const
+{
+    TRACE("getZero2tenStatus")
+    return get_phase_changer_status();
+}
+
+String AutonomTaskManager::phaseChangerCalibrateV(const String & channel_str, const String & value_str)
+{
+    TRACE("phaseChangerCalibrateV")
+    return phase_changer_calibrate_v(channel_str, value_str);
+}
+
+String AutonomTaskManager::phaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+{
+    TRACE("phaseChangerCalibrateIHigh")
+    return phase_changer_calibrate_i_high(channel_str, value_str);
+}
+
+String AutonomTaskManager::phaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+{
+    TRACE("phaseChangerCalibrateILow")
+    return phase_changer_calibrate_i_low(channel_str, value_str);
+}
+
+String AutonomTaskManager::phaseChangerInputV(const String & channel_str, String & value_str)
+{
+    TRACE("phaseChangerInputV")
+    return phase_changer_input_v(channel_str, value_str);
+}
+
+String AutonomTaskManager::phaseChangerInputIHigh(const String & channel_str, String & value_str)
+{
+    TRACE("phaseChangerInputIHigh")
+    return phase_changer_input_i_high(channel_str, value_str);
+}
+
+String AutonomTaskManager::phaseChangerInputILow(const String & channel_str, String & value_str)
+{
+    TRACE("phaseChangerInputILow")
+    return phase_changer_input_i_low(channel_str, value_str);
+}
+
+#endif // INCLUDE_PHASECHANGER
 
 
 void AutonomTaskManager::stopAll()
@@ -468,6 +559,15 @@ void AutonomTaskManager::stopAll()
     }
 
     #endif
+
+    # if INCLUDE_PHASECHANGER
+
+    if (phaseChangerActive)
+    {
+        stopPhaseChanger();
+    }
+
+    #endif
 }
 
 
@@ -490,6 +590,8 @@ const char * function_type_2_str(FunctionType ft)
             return "proportional";
         case ftZero2ten:
             return "zero2ten";
+        case ftPhaseChanger:
+            return "phase-changer";
         default:
             return "<unknown>";    
     }
@@ -529,6 +631,10 @@ String setupAutonom(const JsonVariant & json)
 
     #ifdef INCLUDE_ZERO2TEN
     Zero2tenConfig zero2tenConfig;
+    #endif
+
+    #ifdef INCLUDE_PHASECHANGER
+    PhaseChangerConfig phaseChangerConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -876,6 +982,55 @@ String setupAutonom(const JsonVariant & json)
                     #endif // INCLUDE_ZERO2TEN
                 }
                 else
+                if (function == "phase-changer")
+                {
+                    #ifdef INCLUDE_PHASECHANGER
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        phaseChangerConfig.from_json(config_json);
+
+                        TRACE("function %s: phaseChangerConfig.is_valid=%s", function.c_str(), (phaseChangerConfig.is_valid() ? "true" : "false"))
+                        TRACE(phaseChangerConfig.as_string().c_str())
+
+                        if (phaseChangerConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            phaseChangerConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            configVolume.blocks.insert({(uint8_t) ftPhaseChanger, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_ZERO2TEN
+                }
+                else
                 {
                     sprintf(buf, "function %s is unknown", function.c_str());
                     ERROR(buf)
@@ -941,6 +1096,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.startZero2ten(zero2tenConfig);
                     #endif
                 }
+                else
+                if (*it == ftPhaseChanger)
+                {
+                    #ifdef INCLUDE_PHASECHANGER
+                    autonomTaskManager.startPhaseChanger(phaseChangerConfig);
+                    #endif
+                }
 
             }
             for (auto it=removed.begin(); it!=removed.end(); ++it)
@@ -986,6 +1148,13 @@ String setupAutonom(const JsonVariant & json)
                     autonomTaskManager.stopZero2ten();
                     #endif
                 }
+                else
+                if (*it == ftPhaseChanger)
+                {
+                    #ifdef INCLUDE_PHASECHANGER
+                    autonomTaskManager.stopPhaseChanger();
+                    #endif
+                }
             }
             for (auto it=changed.begin(); it!=changed.end(); ++it)
             {
@@ -1028,6 +1197,13 @@ String setupAutonom(const JsonVariant & json)
                 {
                     #ifdef INCLUDE_ZERO2TEN
                     autonomTaskManager.reconfigureZero2ten(zero2tenConfig);
+                    #endif
+                }
+                else
+                if (*it == ftPhaseChanger)
+                {
+                    #ifdef INCLUDE_PHASECHANGER
+                    autonomTaskManager.reconfigurePhaseChanger(phaseChangerConfig);
                     #endif
                 }
             }
@@ -1353,6 +1529,120 @@ String actionAutonomZero2tenOutput(const String & channel_str, const String & va
     #endif // INCLUDE_ZERO2TEN
 }
 
+String actionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerCalibrateV(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
+String actionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerCalibrateIHigh(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
+String actionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerCalibrateILow(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
+String actionAutonomPhaseChangerInputV(const String & channel_str, String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerInputV(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
+String actionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerInputIHigh(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
+String actionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str)
+{
+    #ifdef INCLUDE_PHASECHANGER
+    if (autonomTaskManager.isPhaseChangerActive())
+    {
+        return autonomTaskManager.phaseChangerInputILow(channel_str, value_str);
+    }
+    else
+    {
+        return "phase-changer not active";
+    }
+    
+    #else
+
+    return "phase-changer is not built in currrent module";
+
+    #endif // INCLUDE_PHASECHANGER
+}
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -1405,6 +1695,15 @@ void getAutonom(JsonVariant & json)
   if (autonomTaskManager.isZero2tenActive())
   {
         Zero2tenStatus status = autonomTaskManager.getZero2tenStatus();
+        status.to_json(json);
+  }
+
+  #endif
+
+  #ifdef INCLUDE_PHASECHANGER
+  if (autonomTaskManager.isPhaseChangerActive())
+  {
+        PhaseChangerStatus status = autonomTaskManager.getPhaseChangerStatus();
         status.to_json(json);
   }
 
@@ -1542,6 +1841,25 @@ void restoreAutonom()
                     TRACE("Config read failure")
                 }}
                 #endif // INCLUDE_ZERO2TEN
+                break;
+
+              case ftPhaseChanger:
+                
+                #ifdef INCLUDE_PHASECHANGER
+                {PhaseChangerConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startPhaseChanger(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_PHASECHANGER
                 break;
 
               default:
