@@ -29,8 +29,12 @@
 #include <zero2ten.h>
 #endif
 
-#ifdef INCLUDE_PHASECHANGER
-#include <phaseChanger.h>
+#ifdef INCLUDE_MAINSPROBE
+#include <mainsProbe.h>
+#endif
+
+#ifdef INCLUDE_MULTI
+#include <multi.h>
 #endif
 
 #include <trace.h>
@@ -49,7 +53,8 @@ class AutonomTaskManager
             rfidLockActive = false;
             proportionalActive = false;
             zero2tenActive = false;
-            phaseChangerActive = false;
+            mainsProbeActive = false;
+            multiActive = false;
         }
 
         #ifdef INCLUDE_SHOWERGUARD
@@ -140,22 +145,37 @@ class AutonomTaskManager
         
         #endif
 
-        #ifdef INCLUDE_PHASECHANGER
+        #ifdef INCLUDE_MAINSPROBE
         
-        void startPhaseChanger(const PhaseChangerConfig &);
-        void stopPhaseChanger();
-        void reconfigurePhaseChanger(const PhaseChangerConfig &);
+        void startMainsProbe(const MainsProbeConfig &);
+        void stopMainsProbe();
+        void reconfigureMainsProbe(const MainsProbeConfig &);
         
-        String phaseChangerCalibrateV(const String & channel_str, const String & value_str);
-        String phaseChangerCalibrateIHigh(const String & channel_str, const String & value_str);
-        String phaseChangerCalibrateILow(const String & channel_str, const String & value_str);
-        String phaseChangerInputV(const String & channel_str, String & value_str);
-        String phaseChangerInputIHigh(const String & channel_str, String & value_str);
-        String phaseChangerInputILow(const String & channel_str, String & value_str);
+        String mainsProbeCalibrateV(const String & channel_str, const String & value_str);
+        String mainsProbeCalibrateAHigh(const String & channel_str, const String & value_str);
+        String mainsProbeCalibrateALow(const String & channel_str, const String & value_str);
+        String mainsProbeInputV(const String & channel_str, String & value_str);
+        String mainsProbeInputAHigh(const String & channel_str, String & value_str);
+        String mainsProbeInputALow(const String & channel_str, String & value_str);
 
-        PhaseChangerStatus getPhaseChangerStatus() const;
+        MainsProbeStatus getMainsProbeStatus() const;
 
-        bool isPhaseChangerActive() const { return phaseChangerActive; }
+        bool isMainsProbeActive() const { return mainsProbeActive; }
+        
+        #endif
+
+        #ifdef INCLUDE_MULTI
+        
+        void startMulti(const MultiConfig &);
+        void stopMulti();
+        void reconfigureMulti(const MultiConfig &);
+        
+        String multiUartCommand(const String & command, String & response);
+        String multiAudioControl(const String & source, const String & channel, const String & volume, String & response);
+
+        MultiStatus getMultiStatus() const;
+
+        bool isMultiActive() const { return multiActive; }
         
         #endif
 
@@ -170,7 +190,8 @@ class AutonomTaskManager
         bool rfidLockActive;
         bool proportionalActive;
         bool zero2tenActive;
-        bool phaseChangerActive;
+        bool mainsProbeActive;
+        bool multiActive;
 };
 
 #ifdef INCLUDE_SHOWERGUARD
@@ -435,71 +456,114 @@ String AutonomTaskManager::zero2tenOutput(const String & channel_str, const Stri
 
 #endif // INCLUDE_ZERO2TEN
 
-#ifdef INCLUDE_PHASECHANGER
+#ifdef INCLUDE_MAINSPROBE
 
-void AutonomTaskManager::startPhaseChanger(const PhaseChangerConfig & config)
+void AutonomTaskManager::startMainsProbe(const MainsProbeConfig & config)
 {
-    TRACE("Starting autonom task phaseChanger")
-    start_phase_changer_task(config);
-    zero2tenActive = true;
+    TRACE("Starting autonom task mainsProbe")
+    start_mains_probe_task(config);
+    mainsProbeActive = true;
 }
 
-void AutonomTaskManager::stopPhaseChanger()
+void AutonomTaskManager::stopMainsProbe()
 {
-    TRACE("stopping autonom task phaseChanger")
-    stop_phase_changer_task();
-    zero2tenActive = false;
+    TRACE("stopping autonom task mainsProbe")
+    stop_mains_probe_task();
+    mainsProbeActive = false;
 }
 
-void AutonomTaskManager::reconfigurePhaseChanger(const PhaseChangerConfig & config)
+void AutonomTaskManager::reconfigureMainsProbe(const MainsProbeConfig & config)
 {
-    TRACE("reconfiguring autonom task phaseChanger")
-    reconfigure_phase_changer(config);
+    TRACE("reconfiguring autonom task mainsProbe")
+    reconfigure_mains_probe(config);
 }
 
-PhaseChangerStatus AutonomTaskManager::getPhaseChangerStatus() const
+MainsProbeStatus AutonomTaskManager::getMainsProbeStatus() const
 {
     TRACE("getZero2tenStatus")
-    return get_phase_changer_status();
+    return get_mains_probe_status();
 }
 
-String AutonomTaskManager::phaseChangerCalibrateV(const String & channel_str, const String & value_str)
+String AutonomTaskManager::mainsProbeCalibrateV(const String & channel_str, const String & value_str)
 {
-    TRACE("phaseChangerCalibrateV")
-    return phase_changer_calibrate_v(channel_str, value_str);
+    TRACE("mainsProbeCalibrateV")
+    return mains_probe_calibrate_v(channel_str, value_str);
 }
 
-String AutonomTaskManager::phaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+String AutonomTaskManager::mainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
 {
-    TRACE("phaseChangerCalibrateIHigh")
-    return phase_changer_calibrate_i_high(channel_str, value_str);
+    TRACE("mainsProbeCalibrateAHigh")
+    return mains_probe_calibrate_a_high(channel_str, value_str);
 }
 
-String AutonomTaskManager::phaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+String AutonomTaskManager::mainsProbeCalibrateALow(const String & channel_str, const String & value_str)
 {
-    TRACE("phaseChangerCalibrateILow")
-    return phase_changer_calibrate_i_low(channel_str, value_str);
+    TRACE("mainsProbeCalibrateALow")
+    return mains_probe_calibrate_a_low(channel_str, value_str);
 }
 
-String AutonomTaskManager::phaseChangerInputV(const String & channel_str, String & value_str)
+String AutonomTaskManager::mainsProbeInputV(const String & channel_str, String & value_str)
 {
-    TRACE("phaseChangerInputV")
-    return phase_changer_input_v(channel_str, value_str);
+    TRACE("mainsProbeInputV")
+    return mains_probe_input_v(channel_str, value_str);
 }
 
-String AutonomTaskManager::phaseChangerInputIHigh(const String & channel_str, String & value_str)
+String AutonomTaskManager::mainsProbeInputAHigh(const String & channel_str, String & value_str)
 {
-    TRACE("phaseChangerInputIHigh")
-    return phase_changer_input_i_high(channel_str, value_str);
+    TRACE("mainsProbeInputAHigh")
+    return mains_probe_input_a_high(channel_str, value_str);
 }
 
-String AutonomTaskManager::phaseChangerInputILow(const String & channel_str, String & value_str)
+String AutonomTaskManager::mainsProbeInputALow(const String & channel_str, String & value_str)
 {
-    TRACE("phaseChangerInputILow")
-    return phase_changer_input_i_low(channel_str, value_str);
+    TRACE("mainsProbeInputALow")
+    return mains_probe_input_a_low(channel_str, value_str);
 }
 
-#endif // INCLUDE_PHASECHANGER
+#endif // INCLUDE_MAINSPROBE
+
+
+#ifdef INCLUDE_MULTI
+
+void AutonomTaskManager::startMulti(const MultiConfig & config)
+{
+    TRACE("Starting autonom task multi")
+    start_multi_task(config);
+    multiActive = true;
+}
+
+void AutonomTaskManager::stopMulti()
+{
+    TRACE("stopping autonom task multi")
+    stop_multi_task();
+    multiActive = false;
+}
+
+void AutonomTaskManager::reconfigureMulti(const MultiConfig & config)
+{
+    TRACE("reconfiguring autonom task multi")
+    reconfigure_multi(config);
+}
+
+String AutonomTaskManager::multiUartCommand(const String & command, String & response)
+{
+    TRACE("multiUartCommand")
+    return multi_uart_command(command, response);
+}
+
+String AutonomTaskManager::multiAudioControl(const String & source, const String & channel, const String & volume, String & response)
+{
+    TRACE("multiAudioControl")
+    return multi_audio_control(source, channel, volume, response);
+}
+
+MultiStatus AutonomTaskManager::getMultiStatus() const
+{
+    TRACE("getMultiStatus")
+    return get_multi_status();
+}
+
+#endif // INCLUDE_MULTI
 
 
 void AutonomTaskManager::stopAll()
@@ -560,11 +624,20 @@ void AutonomTaskManager::stopAll()
 
     #endif
 
-    # if INCLUDE_PHASECHANGER
+    # if INCLUDE_MAINSPROBE
 
-    if (phaseChangerActive)
+    if (mainsProbeActive)
     {
-        stopPhaseChanger();
+        stopMainsProbe();
+    }
+
+    #endif
+
+    # if INCLUDE_MULTI
+
+    if (multiActive)
+    {
+        stopMulti();
     }
 
     #endif
@@ -590,8 +663,10 @@ const char * function_type_2_str(FunctionType ft)
             return "proportional";
         case ftZero2ten:
             return "zero2ten";
-        case ftPhaseChanger:
-            return "phase-changer";
+        case ftMainsProbe:
+            return "mains-probe";
+        case ftMulti:
+            return "multi";
         default:
             return "<unknown>";    
     }
@@ -633,8 +708,12 @@ String setupAutonom(const JsonVariant & json)
     Zero2tenConfig zero2tenConfig;
     #endif
 
-    #ifdef INCLUDE_PHASECHANGER
-    PhaseChangerConfig phaseChangerConfig;
+    #ifdef INCLUDE_MAINSPROBE
+    MainsProbeConfig mainsProbeConfig;
+    #endif
+
+    #ifdef INCLUDE_MULTI
+    MultiConfig multiConfig;
     #endif
 
     if (json.is<JsonArray>())
@@ -982,31 +1061,31 @@ String setupAutonom(const JsonVariant & json)
                     #endif // INCLUDE_ZERO2TEN
                 }
                 else
-                if (function == "phase-changer")
+                if (function == "mains-probe")
                 {
-                    #ifdef INCLUDE_PHASECHANGER
+                    #ifdef INCLUDE_MAINSPROBE
 
                     if (_json.containsKey("config"))
                     {
                         DEBUG("contains config")
                         const JsonVariant & config_json = _json["config"];
 
-                        phaseChangerConfig.from_json(config_json);
+                        mainsProbeConfig.from_json(config_json);
 
-                        TRACE("function %s: phaseChangerConfig.is_valid=%s", function.c_str(), (phaseChangerConfig.is_valid() ? "true" : "false"))
-                        TRACE(phaseChangerConfig.as_string().c_str())
+                        TRACE("function %s: mainsProbeConfig.is_valid=%s", function.c_str(), (mainsProbeConfig.is_valid() ? "true" : "false"))
+                        TRACE(mainsProbeConfig.as_string().c_str())
 
-                        if (phaseChangerConfig.is_valid())
+                        if (mainsProbeConfig.is_valid())
                         {
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
                             std::ostringstream os;
 
-                            phaseChangerConfig.to_eprom(os);
+                            mainsProbeConfig.to_eprom(os);
                             
                             std::string buffer = os.str();
                             TRACE("block size %d", (int) os.tellp())
-                            configVolume.blocks.insert({(uint8_t) ftPhaseChanger, buffer});
+                            configVolume.blocks.insert({(uint8_t) ftMainsProbe, buffer});
                         }
                         else
                         {
@@ -1029,6 +1108,55 @@ String setupAutonom(const JsonVariant & json)
                     return String(buf);
 
                     #endif // INCLUDE_ZERO2TEN
+                }
+                else
+                if (function == "multi")
+                {
+                    #ifdef INCLUDE_MULTI
+
+                    if (_json.containsKey("config"))
+                    {
+                        DEBUG("contains config")
+                        const JsonVariant & config_json = _json["config"];
+
+                        multiConfig.from_json(config_json);
+
+                        TRACE("function %s: multiConfig.is_valid=%s", function.c_str(), (multiConfig.is_valid() ? "true" : "false"))
+                        TRACE(multiConfig.as_string().c_str())
+
+                        if (multiConfig.is_valid())
+                        {
+                            TRACE("adding function %s to EEPROM image", function.c_str())
+
+                            std::ostringstream os;
+
+                            multiConfig.to_eprom(os);
+                            
+                            std::string buffer = os.str();
+                            TRACE("block size %d", (int) os.tellp())
+                            configVolume.blocks.insert({(uint8_t) ftMulti, buffer});
+                        }
+                        else
+                        {
+                            sprintf(buf, "function %s: config invalid", function.c_str());
+                            ERROR(buf)
+                            return String(buf);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(buf, "payload item with function %s should contain config", function.c_str());
+                        ERROR(buf)
+                        return String(buf);
+                    }
+
+                    #else
+
+                    sprintf(buf, "attempt to configure function %s which is not built in current module", function.c_str());
+                    ERROR(buf)
+                    return String(buf);
+
+                    #endif // INCLUDE_MULTI
                 }
                 else
                 {
@@ -1097,10 +1225,17 @@ String setupAutonom(const JsonVariant & json)
                     #endif
                 }
                 else
-                if (*it == ftPhaseChanger)
+                if (*it == ftMainsProbe)
                 {
-                    #ifdef INCLUDE_PHASECHANGER
-                    autonomTaskManager.startPhaseChanger(phaseChangerConfig);
+                    #ifdef INCLUDE_MAINSPROBE
+                    autonomTaskManager.startMainsProbe(mainsProbeConfig);
+                    #endif
+                }
+                else
+                if (*it == ftMulti)
+                {
+                    #ifdef INCLUDE_MULTI
+                    autonomTaskManager.startMulti(multiConfig);
                     #endif
                 }
 
@@ -1149,10 +1284,17 @@ String setupAutonom(const JsonVariant & json)
                     #endif
                 }
                 else
-                if (*it == ftPhaseChanger)
+                if (*it == ftMainsProbe)
                 {
-                    #ifdef INCLUDE_PHASECHANGER
-                    autonomTaskManager.stopPhaseChanger();
+                    #ifdef INCLUDE_MAINSPROBE
+                    autonomTaskManager.stopMainsProbe();
+                    #endif
+                }
+                else
+                if (*it == ftMulti)
+                {
+                    #ifdef INCLUDE_MULTI
+                    autonomTaskManager.stopMulti();
                     #endif
                 }
             }
@@ -1200,10 +1342,17 @@ String setupAutonom(const JsonVariant & json)
                     #endif
                 }
                 else
-                if (*it == ftPhaseChanger)
+                if (*it == ftMainsProbe)
                 {
-                    #ifdef INCLUDE_PHASECHANGER
-                    autonomTaskManager.reconfigurePhaseChanger(phaseChangerConfig);
+                    #ifdef INCLUDE_MAINSPROBE
+                    autonomTaskManager.reconfigureMainsProbe(mainsProbeConfig);
+                    #endif
+                }
+                else
+                if (*it == ftMulti)
+                {
+                    #ifdef INCLUDE_MULTI
+                    autonomTaskManager.reconfigureMulti(multiConfig);
                     #endif
                 }
             }
@@ -1529,118 +1678,157 @@ String actionAutonomZero2tenOutput(const String & channel_str, const String & va
     #endif // INCLUDE_ZERO2TEN
 }
 
-String actionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str)
+String actionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerCalibrateV(channel_str, value_str);
+        return autonomTaskManager.mainsProbeCalibrateV(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+String actionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerCalibrateIHigh(channel_str, value_str);
+        return autonomTaskManager.mainsProbeCalibrateAHigh(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+String actionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerCalibrateILow(channel_str, value_str);
+        return autonomTaskManager.mainsProbeCalibrateALow(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomPhaseChangerInputV(const String & channel_str, String & value_str)
+String actionAutonomMainsProbeInputV(const String & channel_str, String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerInputV(channel_str, value_str);
+        return autonomTaskManager.mainsProbeInputV(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str)
+String actionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerInputIHigh(channel_str, value_str);
+        return autonomTaskManager.mainsProbeInputAHigh(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str)
+String actionAutonomMainsProbeInputALow(const String & channel_str, String & value_str)
 {
-    #ifdef INCLUDE_PHASECHANGER
-    if (autonomTaskManager.isPhaseChangerActive())
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.phaseChangerInputILow(channel_str, value_str);
+        return autonomTaskManager.mainsProbeInputALow(channel_str, value_str);
     }
     else
     {
-        return "phase-changer not active";
+        return "mains-probe not active";
     }
     
     #else
 
-    return "phase-changer is not built in currrent module";
+    return "mains-probe is not built in currrent module";
 
-    #endif // INCLUDE_PHASECHANGER
+    #endif // INCLUDE_MAINSPROBE
+}
+
+String actionAutonomMultiUartCommand(const String & command, String & response)
+{
+    #ifdef INCLUDE_MULTI
+    if (autonomTaskManager.isMultiActive())
+    {
+        return autonomTaskManager.multiUartCommand(command, response);
+    }
+    else
+    {
+        return "multi not active";
+    }
+    
+    #else
+
+    return "multi is not built in currrent module";
+
+    #endif // INCLUDE_MULTI
+}
+
+String actionAutonomMultiAudioControl(const String & source, const String & channel, const String & volume, String & response)
+{
+    #ifdef INCLUDE_MULTI
+    TRACE("multiAudioControl")
+    if (autonomTaskManager.isMultiActive())
+    {
+        return autonomTaskManager.multiAudioControl(source, channel, volume, response);
+    }
+    else
+    {
+        return "multi not active";
+    }
+    
+    #else
+
+    return "multi is not built in currrent module";
+
+    #endif // INCLUDE_MULTI
 }
 
 void getAutonom(JsonVariant & json)
@@ -1700,10 +1888,19 @@ void getAutonom(JsonVariant & json)
 
   #endif
 
-  #ifdef INCLUDE_PHASECHANGER
-  if (autonomTaskManager.isPhaseChangerActive())
+  #ifdef INCLUDE_MAINSPROBE
+  if (autonomTaskManager.isMainsProbeActive())
   {
-        PhaseChangerStatus status = autonomTaskManager.getPhaseChangerStatus();
+        MainsProbeStatus status = autonomTaskManager.getMainsProbeStatus();
+        status.to_json(json);
+  }
+
+  #endif
+
+  #ifdef INCLUDE_MULTI
+  if (autonomTaskManager.isMultiActive())
+  {
+        MultiStatus status = autonomTaskManager.getMultiStatus();
         status.to_json(json);
   }
 
@@ -1843,23 +2040,42 @@ void restoreAutonom()
                 #endif // INCLUDE_ZERO2TEN
                 break;
 
-              case ftPhaseChanger:
+              case ftMainsProbe:
                 
-                #ifdef INCLUDE_PHASECHANGER
-                {PhaseChangerConfig config;
+                #ifdef INCLUDE_MAINSPROBE
+                {MainsProbeConfig config;
                 
                 if (config.from_eprom(is) == true)
                 {
                     TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
                     TRACE("Config %s", config.as_string().c_str())
 
-                    autonomTaskManager.startPhaseChanger(config);
+                    autonomTaskManager.startMainsProbe(config);
                 }
                 else
                 {
                     TRACE("Config read failure")
                 }}
-                #endif // INCLUDE_PHASECHANGER
+                #endif // INCLUDE_MAINSPROBE
+                break;
+
+              case ftMulti:
+                
+                #ifdef INCLUDE_MULTI
+                {MultiConfig config;
+                
+                if (config.from_eprom(is) == true)
+                {
+                    TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
+                    TRACE("Config %s", config.as_string().c_str())
+
+                    autonomTaskManager.startMulti(config);
+                }
+                else
+                {
+                    TRACE("Config read failure")
+                }}
+                #endif // INCLUDE_MULTI
                 break;
 
               default:

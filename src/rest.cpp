@@ -73,6 +73,36 @@ String restPing(bool include_info)
 
   #endif
 
+  #ifdef INCLUDE_RFIDLOCK
+
+  sw_caps.add("rfidLock");
+
+  #endif
+
+#ifdef INCLUDE_PROPORTIONAL
+
+  sw_caps.add("proportional");
+
+  #endif
+
+#ifdef INCLUDE_ZERO2TEN
+
+  sw_caps.add("zero2ten");
+
+  #endif
+
+#ifdef INCLUDE_MAINSPROBE
+
+  sw_caps.add("mainsProbe");
+
+  #endif
+
+#ifdef INCLUDE_MULTI
+
+  sw_caps.add("multi");
+
+  #endif
+
   if (include_info)
   {
     jsonDocument["wifiinfo"] = wifiHandler.getWifiInfo();
@@ -297,52 +327,68 @@ String restActionAutonomZero2tenOutput(const String & channel_str, const String 
   return actionAutonomZero2tenOutput(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str)
+String restActionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str)
 {
-  TRACE("REST action autonom phase-changer calibrate V")
+  TRACE("REST action autonom mains-probe calibrate V")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerCalibrateV(channel_str, value_str);
+  return actionAutonomMainsProbeCalibrateV(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str)
+String restActionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
 {
-  TRACE("REST action autonom phase-changer calibrate I High")
+  TRACE("REST action autonom mains-probe calibrate A High")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerCalibrateIHigh(channel_str, value_str);
+  return actionAutonomMainsProbeCalibrateAHigh(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str)
+String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str)
 {
-  TRACE("REST action autonom phase-changer calibrate I Low")
+  TRACE("REST action autonom mains-probe calibrate A Low")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerCalibrateILow(channel_str, value_str);
+  return actionAutonomMainsProbeCalibrateALow(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerInputV(const String & channel_str, String & value_str)
+String restActionAutonomMainsProbeInputV(const String & channel_str, String & value_str)
 {
   TRACE("REST action autonom zero2ten input V")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerInputV(channel_str, value_str);
+  return actionAutonomMainsProbeInputV(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str)
+String restActionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str)
 {
   TRACE("REST action autonom zero2ten input I High")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerInputIHigh(channel_str, value_str);
+  return actionAutonomMainsProbeInputAHigh(channel_str, value_str);
 }
 
-String restActionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str)
+String restActionAutonomMainsProbeInputALow(const String & channel_str, String & value_str)
 {
   TRACE("REST action autonom zero2ten input I Low")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomPhaseChangerInputILow(channel_str, value_str);
+  return actionAutonomMainsProbeInputALow(channel_str, value_str);
+}
+
+String restActionAutonomMultiUartCommand(const String & command, String & response)
+{
+  TRACE("REST action autonom multi UART command")
+  DEBUG("command %s", command.c_str())
+
+  return actionAutonomMultiUartCommand(command, response);
+}
+
+String restActionAutonomMultiAudioControl(const String & source, const String & channel, const String & volume, String & response)
+{
+  TRACE("REST action autonom multi audio config")
+  DEBUG("source %s, channel %s, volume %s", source.c_str(), channel.c_str(), volume.c_str())
+
+  return actionAutonomMultiAudioControl(source, channel, volume, response);
 }
 
 String restGet(const String & resetStamp) 

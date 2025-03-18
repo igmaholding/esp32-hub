@@ -22,12 +22,15 @@ String actionAutonomZero2tenInput(const String & channel_str, String & value_str
 String actionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
 String actionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
 
-String actionAutonomPhaseChangerCalibrateV(const String & channel_str, const String & value_str);
-String actionAutonomPhaseChangerCalibrateIHigh(const String & channel_str, const String & value_str);
-String actionAutonomPhaseChangerCalibrateILow(const String & channel_str, const String & value_str);
-String actionAutonomPhaseChangerInputV(const String & channel_str, String & value_str);
-String actionAutonomPhaseChangerInputIHigh(const String & channel_str, String & value_str);
-String actionAutonomPhaseChangerInputILow(const String & channel_str, String & value_str);
+String actionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str);
+String actionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str);
+String actionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str);
+String actionAutonomMainsProbeInputV(const String & channel_str, String & value_str);
+String actionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str);
+String actionAutonomMainsProbeInputALow(const String & channel_str, String & value_str);
+
+String actionAutonomMultiUartCommand(const String & command, String & response);
+String actionAutonomMultiAudioControl(const String & source, const String & channel, const String & volume, String & response);
 
 
 enum FunctionType
@@ -38,7 +41,8 @@ enum FunctionType
     ftRfidLock =     4,
     ftProportional = 5,
     ftZero2ten =     6,
-    ftPhaseChanger = 7
+    ftMainsProbe = 7,
+    ftMulti        = 8
 };
 
 const char * function_type_2_str(FunctionType);

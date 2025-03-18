@@ -325,22 +325,24 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
 }]
 
 [{
-    "function":"phase-changer", 
+    "function":"mains-probe", 
     "config":{
 
+            "i2c":{"scl":{"channel":{"gpio":35}}, "sda":{"channel":{"gpio":33}}},
+
             "input_v_channels":[
-                            {"addr":0x40,"channel":0, "ratio":0.20408},
-                            {"addr":0x40,"channel":1, "ratio":0.20408},
-                            {"addr":0x40,"channel":2, "ratio":0.20408}
+                            {"addr":"0x40","channel":0, "ratio":0.20408},
+                            {"addr":"0x40","channel":1, "ratio":0.20408},
+                            {"addr":"0x40","channel":2, "ratio":0.20408}
                         ],
 
-            "input_i_high_channels":[
-                            {"addr":0x41,"channel":0, "ratio":0.20408},
-                            {"addr":0x41,"channel":1, "ratio":0.20408},
-                            {"addr":0x41,"channel":2, "ratio":0.20408}
+            "input_a_high_channels":[
+                            {"addr":"0x41","channel":0, "ratio":0.20408},
+                            {"addr":"0x41","channel":1, "ratio":0.20408},
+                            {"addr":"0x41","channel":2, "ratio":0.20408}
                         ],
 
-            "input_i_low_channels":[
+            "input_a_low_channels":[
                             {"gpio":8,"atten":3, "ratio":0.20408},
                             {"gpio":6,"atten":3, "ratio":0.20408},
                             {"gpio":12,"atten":3, "ratio":0.20408}
@@ -351,6 +353,54 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
                 },
     
 }]
+
+[{
+    "function":"multi", 
+    "config":{
+
+        "uart":{"uart_num":2, "tx":{"channel":{"gpio":17}}, "rx":{"channel":{"gpio":18}}},
+
+        "bt" : {"hw":"FSC-BT955","reset":{"gpio":19, "inverted":true}},
+        
+        "fm":{"hw":"RDA5807", "addr":"0x60"},
+
+        "i2s":{"dout":{"channel":{"gpio":6}}, "bclk":{"channel":{"gpio":4}},"lrc":{"channel":{"gpio":5}}},
+        
+        "i2c":{"scl":{"channel":{"gpio":8}}, "sda":{"channel":{"gpio":7}}},
+
+        "service":{"url":[{"name":"lugna", "value":"http://fm03-ice.stream.khz.se/fm03_aac"}, 
+                          {"name":"ffh-de", "value":"http://mp3.ffh.de/radioffh/hqlivestream.aac"},
+                          {"name":"heart00s", "value":"http://vis.media-ice.musicradio.com/Heart00s"},
+                          {"name":"power", "value":"http://fm03-ice.stream.khz.se/fm04_aac"},
+                          {"name":"rix", "value":"http://fm03-ice.stream.khz.se/fm01_aac"}
+                         ],
+                   
+                   "url_select": 1,  
+                   
+                   "fm_freq":[{"name":"rix", "value":101.7}, 
+                              {"name":"star", "value":90.4},
+                              {"name":"p1", "value":91.2},
+                              {"name":"p2", "value":94.6},
+                              {"name":"p3", "value":96.5}
+                             ],
+                             
+                   "fm_freq_select": 0
+                   
+                   },
+        
+        "sound":{"hw":"TDA8425", "addr":"0x41", "mute":{"gpio":9, "inverted":false}, "volume":100, "volume_low":30, 
+                 "gain_low_pass":7, "gain_band_pass":0, "gain_high_pass":10,
+                 "schedule":[1,1,1,1,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}                
+    }
+}]   
+
+        # volume is 0..100, it is a max volume applied according to schedule
+        #
+        # tone gain is in dB; note that band_pass might not be supported; in this case if the value is not 0
+        # it will be used to offset low and high pass values
+
+
+
 
 REST POST cleanup
 URL: <base>/cleanup
@@ -475,42 +525,57 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/calibrate_v?channel=XX&value=YY // without the value -> uncalibrate
+URL: <base>/action/autonom/mains-probe/calibrate_v?channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/calibrate_i_high?channel=XX&value=YY // without the value -> uncalibrate
+URL: <base>/action/autonom/mains-probe/calibrate_a_high?channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/calibrate_i_low?channel=XX&value=YY // without the value -> uncalibrate
+URL: <base>/action/autonom/mains-probe/calibrate_a_low?channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/input_v?channel=XX
+URL: <base>/action/autonom/mains-probe/input_v?channel=XX
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/input_i_high?channel=XX
+URL: <base>/action/autonom/mains-probe/input_a_high?channel=XX
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/phase-changer/input_i_low?channel=XX
+URL: <base>/action/autonom/mains-probe/input_a_low?channel=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/multi/uart_command?command=XX
+BODY: none
+RESPONSE: 
+{
+}
+
+// all params are optional!
+REST POST action  
+URL: <base>/action/autonom/multi/audio_control?source=<bt, www, fm or none>,channel=<channel index, for webradio or fm>,volume=<0..100> 
 BODY: none
 RESPONSE: 
 {
@@ -1082,7 +1147,7 @@ void on_action_autonom_zero2ten_output()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_calibrate_v()
+void on_action_autonom_mains_probe_calibrate_v()
 {
     String channel_str;
     String value_str;
@@ -1098,7 +1163,7 @@ void on_action_autonom_phase_changer_calibrate_v()
         }
         // otherwise - uncalibrate
         
-        r = restActionAutonomPhaseChangerCalibrateV(channel_str, value_str);
+        r = restActionAutonomMainsProbeCalibrateV(channel_str, value_str);
     }
     else
     {
@@ -1118,7 +1183,7 @@ void on_action_autonom_phase_changer_calibrate_v()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_calibrate_i_high()
+void on_action_autonom_mains_probe_calibrate_a_high()
 {
     String channel_str;
     String value_str;
@@ -1134,7 +1199,7 @@ void on_action_autonom_phase_changer_calibrate_i_high()
         }
         // otherwise - uncalibrate
         
-        r = restActionAutonomPhaseChangerCalibrateIHigh(channel_str, value_str);
+        r = restActionAutonomMainsProbeCalibrateAHigh(channel_str, value_str);
     }
     else
     {
@@ -1154,7 +1219,7 @@ void on_action_autonom_phase_changer_calibrate_i_high()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_calibrate_i_low()
+void on_action_autonom_mains_probe_calibrate_a_low()
 {
     String channel_str;
     String value_str;
@@ -1170,7 +1235,7 @@ void on_action_autonom_phase_changer_calibrate_i_low()
         }
         // otherwise - uncalibrate
         
-        r = restActionAutonomPhaseChangerCalibrateILow(channel_str, value_str);
+        r = restActionAutonomMainsProbeCalibrateALow(channel_str, value_str);
     }
     else
     {
@@ -1190,7 +1255,7 @@ void on_action_autonom_phase_changer_calibrate_i_low()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_input_v()
+void on_action_autonom_mains_probe_input_v()
 {
     String channel_str;
     String value_str;
@@ -1200,7 +1265,7 @@ void on_action_autonom_phase_changer_input_v()
     {
         channel_str = webServer.arg("channel");        
         
-        r = restActionAutonomPhaseChangerInputV(channel_str, value_str);
+        r = restActionAutonomMainsProbeInputV(channel_str, value_str);
     }
     else
     {
@@ -1220,7 +1285,7 @@ void on_action_autonom_phase_changer_input_v()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_input_i_high()
+void on_action_autonom_mains_probe_input_a_high()
 {
     String channel_str;
     String value_str;
@@ -1230,7 +1295,7 @@ void on_action_autonom_phase_changer_input_i_high()
     {
         channel_str = webServer.arg("channel");        
         
-        r = restActionAutonomPhaseChangerInputIHigh(channel_str, value_str);
+        r = restActionAutonomMainsProbeInputAHigh(channel_str, value_str);
     }
     else
     {
@@ -1250,7 +1315,7 @@ void on_action_autonom_phase_changer_input_i_high()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_phase_changer_input_i_low()
+void on_action_autonom_mains_probe_input_a_low()
 {
     String channel_str;
     String value_str;
@@ -1260,7 +1325,7 @@ void on_action_autonom_phase_changer_input_i_low()
     {
         channel_str = webServer.arg("channel");        
         
-        r = restActionAutonomPhaseChangerInputILow(channel_str, value_str);
+        r = restActionAutonomMainsProbeInputALow(channel_str, value_str);
     }
     else
     {
@@ -1270,6 +1335,74 @@ void on_action_autonom_phase_changer_input_i_low()
     if (r.isEmpty())
     {
         webServer.send(200, "application/json", String("{\"value\":\"" + value_str + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_multi_uart_command()
+{
+    String command;
+    String response;
+    String r;    
+
+    if (webServer.hasArg("command") == true)
+    {
+        command = webServer.arg("command");        
+        
+        r = restActionAutonomMultiUartCommand(command, response);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"response\":\"" + response + "\"}"));
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_multi_audio_control()
+{
+    String source;
+    String channel;
+    String volume;
+    String response;
+    String r;    
+
+    if (webServer.hasArg("source") == true)
+    {
+        source = webServer.arg("source");        
+    }
+
+    if (webServer.hasArg("channel") == true)
+    {
+        channel = webServer.arg("channel");        
+    }
+
+    if (webServer.hasArg("volume") == true)
+    {
+        volume = webServer.arg("volume");        
+    }
+
+    r = restActionAutonomMultiAudioControl(source, channel, volume, response);
+    
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", String("{\"response\":\"" + response + "\"}"));
     }
     else
     {
@@ -1378,12 +1511,14 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/input", HTTP_POST, on_action_autonom_zero2ten_input);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/calibrate_output", HTTP_POST, on_action_autonom_zero2ten_calibrate_output);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/output", HTTP_POST, on_action_autonom_zero2ten_output);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_v", HTTP_POST, on_action_autonom_phase_changer_calibrate_v);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_i_high", HTTP_POST, on_action_autonom_phase_changer_calibrate_i_high);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/calibrate_i_low", HTTP_POST, on_action_autonom_phase_changer_calibrate_i_low);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_v", HTTP_POST, on_action_autonom_phase_changer_input_v);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_i_high", HTTP_POST, on_action_autonom_phase_changer_input_i_high);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/phase-changer/input_i_low", HTTP_POST, on_action_autonom_phase_changer_input_i_low);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/calibrate_v", HTTP_POST, on_action_autonom_mains_probe_calibrate_v);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/calibrate_a_high", HTTP_POST, on_action_autonom_mains_probe_calibrate_a_high);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/calibrate_a_low", HTTP_POST, on_action_autonom_mains_probe_calibrate_a_low);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_v", HTTP_POST, on_action_autonom_mains_probe_input_v);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_a_high", HTTP_POST, on_action_autonom_mains_probe_input_a_high);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_a_low", HTTP_POST, on_action_autonom_mains_probe_input_a_low);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/uart_command", HTTP_POST, on_action_autonom_multi_uart_command);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/audio_control", HTTP_POST, on_action_autonom_multi_audio_control);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);
