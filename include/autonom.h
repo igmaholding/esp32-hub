@@ -22,11 +22,11 @@ String actionAutonomZero2tenInput(const String & channel_str, String & value_str
 String actionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
 String actionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
 
-String actionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str);
-String actionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str);
+String actionAutonomMainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str);
+String actionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str);
 String actionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str);
-String actionAutonomMainsProbeInputV(const String & channel_str, String & value_str);
-String actionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str);
+String actionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str);
+String actionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str);
 String actionAutonomMainsProbeInputALow(const String & channel_str, String & value_str);
 
 String actionAutonomMultiUartCommand(const String & command, String & response);

@@ -151,11 +151,11 @@ class AutonomTaskManager
         void stopMainsProbe();
         void reconfigureMainsProbe(const MainsProbeConfig &);
         
-        String mainsProbeCalibrateV(const String & channel_str, const String & value_str);
-        String mainsProbeCalibrateAHigh(const String & channel_str, const String & value_str);
+        String mainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str);
+        String mainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str);
         String mainsProbeCalibrateALow(const String & channel_str, const String & value_str);
-        String mainsProbeInputV(const String & channel_str, String & value_str);
-        String mainsProbeInputAHigh(const String & channel_str, String & value_str);
+        String mainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str);
+        String mainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str);
         String mainsProbeInputALow(const String & channel_str, String & value_str);
 
         MainsProbeStatus getMainsProbeStatus() const;
@@ -484,16 +484,16 @@ MainsProbeStatus AutonomTaskManager::getMainsProbeStatus() const
     return get_mains_probe_status();
 }
 
-String AutonomTaskManager::mainsProbeCalibrateV(const String & channel_str, const String & value_str)
+String AutonomTaskManager::mainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str)
 {
     TRACE("mainsProbeCalibrateV")
-    return mains_probe_calibrate_v(channel_str, value_str);
+    return mains_probe_calibrate_v(addr_str, channel_str, value_str);
 }
 
-String AutonomTaskManager::mainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
+String AutonomTaskManager::mainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str)
 {
     TRACE("mainsProbeCalibrateAHigh")
-    return mains_probe_calibrate_a_high(channel_str, value_str);
+    return mains_probe_calibrate_a_high(addr_str, channel_str, value_str);
 }
 
 String AutonomTaskManager::mainsProbeCalibrateALow(const String & channel_str, const String & value_str)
@@ -502,16 +502,16 @@ String AutonomTaskManager::mainsProbeCalibrateALow(const String & channel_str, c
     return mains_probe_calibrate_a_low(channel_str, value_str);
 }
 
-String AutonomTaskManager::mainsProbeInputV(const String & channel_str, String & value_str)
+String AutonomTaskManager::mainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str)
 {
     TRACE("mainsProbeInputV")
-    return mains_probe_input_v(channel_str, value_str);
+    return mains_probe_input_v(addr_str, channel_str, value_str);
 }
 
-String AutonomTaskManager::mainsProbeInputAHigh(const String & channel_str, String & value_str)
+String AutonomTaskManager::mainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str)
 {
     TRACE("mainsProbeInputAHigh")
-    return mains_probe_input_a_high(channel_str, value_str);
+    return mains_probe_input_a_high(addr_str, channel_str, value_str);
 }
 
 String AutonomTaskManager::mainsProbeInputALow(const String & channel_str, String & value_str)
@@ -1678,12 +1678,12 @@ String actionAutonomZero2tenOutput(const String & channel_str, const String & va
     #endif // INCLUDE_ZERO2TEN
 }
 
-String actionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str)
+String actionAutonomMainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str)
 {
     #ifdef INCLUDE_MAINSPROBE
     if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.mainsProbeCalibrateV(channel_str, value_str);
+        return autonomTaskManager.mainsProbeCalibrateV(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1697,12 +1697,12 @@ String actionAutonomMainsProbeCalibrateV(const String & channel_str, const Strin
     #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
+String actionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str)
 {
     #ifdef INCLUDE_MAINSPROBE
     if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.mainsProbeCalibrateAHigh(channel_str, value_str);
+        return autonomTaskManager.mainsProbeCalibrateAHigh(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1735,12 +1735,12 @@ String actionAutonomMainsProbeCalibrateALow(const String & channel_str, const St
     #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomMainsProbeInputV(const String & channel_str, String & value_str)
+String actionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str)
 {
     #ifdef INCLUDE_MAINSPROBE
     if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.mainsProbeInputV(channel_str, value_str);
+        return autonomTaskManager.mainsProbeInputV(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1754,12 +1754,12 @@ String actionAutonomMainsProbeInputV(const String & channel_str, String & value_
     #endif // INCLUDE_MAINSPROBE
 }
 
-String actionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str)
+String actionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str)
 {
     #ifdef INCLUDE_MAINSPROBE
     if (autonomTaskManager.isMainsProbeActive())
     {
-        return autonomTaskManager.mainsProbeInputAHigh(channel_str, value_str);
+        return autonomTaskManager.mainsProbeInputAHigh(addr_str, channel_str, value_str);
     }
     else
     {

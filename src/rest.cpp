@@ -327,20 +327,20 @@ String restActionAutonomZero2tenOutput(const String & channel_str, const String 
   return actionAutonomZero2tenOutput(channel_str, value_str);
 }
 
-String restActionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str)
+String restActionAutonomMainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str)
 {
   TRACE("REST action autonom mains-probe calibrate V")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomMainsProbeCalibrateV(channel_str, value_str);
+  return actionAutonomMainsProbeCalibrateV(addr_str, channel_str, value_str);
 }
 
-String restActionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str)
+String restActionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str)
 {
   TRACE("REST action autonom mains-probe calibrate A High")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomMainsProbeCalibrateAHigh(channel_str, value_str);
+  return actionAutonomMainsProbeCalibrateAHigh(addr_str, channel_str, value_str);
 }
 
 String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str)
@@ -351,20 +351,20 @@ String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, cons
   return actionAutonomMainsProbeCalibrateALow(channel_str, value_str);
 }
 
-String restActionAutonomMainsProbeInputV(const String & channel_str, String & value_str)
+String restActionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str)
 {
   TRACE("REST action autonom zero2ten input V")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomMainsProbeInputV(channel_str, value_str);
+  return actionAutonomMainsProbeInputV(addr_str, channel_str, value_str);
 }
 
-String restActionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str)
+String restActionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str)
 {
   TRACE("REST action autonom zero2ten input I High")
   DEBUG("channel %s", channel_str.c_str())
 
-  return actionAutonomMainsProbeInputAHigh(channel_str, value_str);
+  return actionAutonomMainsProbeInputAHigh(addr_str, channel_str, value_str);
 }
 
 String restActionAutonomMainsProbeInputALow(const String & channel_str, String & value_str)

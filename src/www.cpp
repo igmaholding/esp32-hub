@@ -331,15 +331,27 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
             "i2c":{"scl":{"channel":{"gpio":35}}, "sda":{"channel":{"gpio":33}}},
 
             "input_v_channels":[
-                            {"addr":"0x40","channel":0, "ratio":0.20408},
-                            {"addr":"0x40","channel":1, "ratio":0.20408},
-                            {"addr":"0x40","channel":2, "ratio":0.20408}
+                                { 
+                                    "addr":"0x40",
+
+                                    "channels": [   
+                                                    {"channel":0, "ratio":0.20408},
+                                                    {"channel":1, "ratio":0.20408},
+                                                    {"channel":2, "ratio":0.20408}
+                                                ]
+                                }
                         ],
 
             "input_a_high_channels":[
-                            {"addr":"0x41","channel":0, "ratio":0.20408},
-                            {"addr":"0x41","channel":1, "ratio":0.20408},
-                            {"addr":"0x41","channel":2, "ratio":0.20408}
+                                { 
+                                    "addr":"0x41",
+
+                                    "channels": [   
+                                                    {"channel":0, "ratio":0.20408},
+                                                    {"channel":1, "ratio":0.20408},
+                                                    {"channel":2, "ratio":0.20408}
+                                                ]
+                                }
                         ],
 
             "input_a_low_channels":[
@@ -525,14 +537,14 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/mains-probe/calibrate_v?channel=XX&value=YY // without the value -> uncalibrate
+URL: <base>/action/autonom/mains-probe/calibrate_v?addr=ZZ&channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/mains-probe/calibrate_a_high?channel=XX&value=YY // without the value -> uncalibrate
+URL: <base>/action/autonom/mains-probe/calibrate_a_high?addr=ZZ&channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
 RESPONSE: 
 {
@@ -546,14 +558,14 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/mains-probe/input_v?channel=XX
+URL: <base>/action/autonom/mains-probe/input_v?addr=ZZ&channel=XX
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/mains-probe/input_a_high?channel=XX
+URL: <base>/action/autonom/mains-probe/input_a_high?addr=ZZ&channel=XX
 BODY: none
 RESPONSE: 
 {
@@ -1149,9 +1161,15 @@ void on_action_autonom_zero2ten_output()
 
 void on_action_autonom_mains_probe_calibrate_v()
 {
+    String addr_str;
     String channel_str;
     String value_str;
     String r;    
+
+    if (webServer.hasArg("addr") == true)
+    {
+        addr_str = webServer.arg("addr");
+    }
 
     if (webServer.hasArg("channel") == true)
     {
@@ -1163,7 +1181,7 @@ void on_action_autonom_mains_probe_calibrate_v()
         }
         // otherwise - uncalibrate
         
-        r = restActionAutonomMainsProbeCalibrateV(channel_str, value_str);
+        r = restActionAutonomMainsProbeCalibrateV(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1185,9 +1203,15 @@ void on_action_autonom_mains_probe_calibrate_v()
 
 void on_action_autonom_mains_probe_calibrate_a_high()
 {
+    String addr_str;
     String channel_str;
     String value_str;
     String r;    
+
+    if (webServer.hasArg("addr") == true)
+    {
+        addr_str = webServer.arg("addr");
+    }
 
     if (webServer.hasArg("channel") == true)
     {
@@ -1199,7 +1223,7 @@ void on_action_autonom_mains_probe_calibrate_a_high()
         }
         // otherwise - uncalibrate
         
-        r = restActionAutonomMainsProbeCalibrateAHigh(channel_str, value_str);
+        r = restActionAutonomMainsProbeCalibrateAHigh(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1257,15 +1281,21 @@ void on_action_autonom_mains_probe_calibrate_a_low()
 
 void on_action_autonom_mains_probe_input_v()
 {
+    String addr_str;
     String channel_str;
     String value_str;
     String r;    
+
+    if (webServer.hasArg("addr") == true)
+    {
+        addr_str = webServer.arg("addr");
+    }
 
     if (webServer.hasArg("channel") == true)
     {
         channel_str = webServer.arg("channel");        
         
-        r = restActionAutonomMainsProbeInputV(channel_str, value_str);
+        r = restActionAutonomMainsProbeInputV(addr_str, channel_str, value_str);
     }
     else
     {
@@ -1287,15 +1317,21 @@ void on_action_autonom_mains_probe_input_v()
 
 void on_action_autonom_mains_probe_input_a_high()
 {
+    String addr_str;
     String channel_str;
     String value_str;
     String r;    
+
+    if (webServer.hasArg("addr") == true)
+    {
+        addr_str = webServer.arg("addr");
+    }
 
     if (webServer.hasArg("channel") == true)
     {
         channel_str = webServer.arg("channel");        
         
-        r = restActionAutonomMainsProbeInputAHigh(channel_str, value_str);
+        r = restActionAutonomMainsProbeInputAHigh(addr_str, channel_str, value_str);
     }
     else
     {

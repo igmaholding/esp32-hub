@@ -7,6 +7,7 @@
 #include <keyboxActuator.h>
 #include <digitalInputChannelConfig.h>
 #include <genericChannelConfig.h>
+#include <bt.h>
 #include <trace.h>
 
 class MultiConfig
@@ -173,12 +174,8 @@ class MultiConfig
 
         struct Bt
         {
-            enum Hw
-            {
-                hwFscBt955  = 0,
-                hwFscBt1036 = 1
-            };
-
+            typedef FscBt::Hw Hw;
+            
             Bt()
             {
                 clear();
@@ -190,29 +187,14 @@ class MultiConfig
                 reset.clear();
             } 
 
-            String hw_2_str(Hw hw) const
+            static String hw_2_str(Hw hw)
             {
-                switch (hw)
-                {
-                    case hwFscBt955: return "FSC-BT955";
-                    case hwFscBt1036: return "FSC-BT1036";
-                    default: return "<unknown>";
-                }
+                return FscBt::hw_2_str(hw);
             }
-
-            Hw str_2_hw(const String & string) const
+        
+            static Hw str_2_hw(const String & string)
             {
-                if (hw_2_str(hwFscBt955) == string)
-                {
-                    return hwFscBt955;
-                }
-                
-                if (hw_2_str(hwFscBt1036) == string)
-                {
-                    return hwFscBt1036;
-                }
-
-                return (Hw) -1;
+                return FscBt::str_2_hw(string);
             }
 
             void from_json(const JsonVariant & json);

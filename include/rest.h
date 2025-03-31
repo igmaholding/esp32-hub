@@ -27,11 +27,11 @@ String restActionAutonomZero2tenInput(const String & channel_str, String & value
 String restActionAutonomZero2tenCalibrateOutput(const String & channel_str, const String & value_str);
 String restActionAutonomZero2tenOutput(const String & channel_str, const String & value_str);
 
-String restActionAutonomMainsProbeCalibrateV(const String & channel_str, const String & value_str);
-String restActionAutonomMainsProbeCalibrateAHigh(const String & channel_str, const String & value_str);
+String restActionAutonomMainsProbeCalibrateV(const String & addr_str, const String & channel_str, const String & value_str);
+String restActionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str);
 String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str);
-String restActionAutonomMainsProbeInputV(const String & channel_str, String & value_str);
-String restActionAutonomMainsProbeInputAHigh(const String & channel_str, String & value_str);
+String restActionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str);
+String restActionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str);
 String restActionAutonomMainsProbeInputALow(const String & channel_str, String & value_str);
 
 String restActionAutonomMultiUartCommand(const String & command, String & response);

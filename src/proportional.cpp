@@ -549,6 +549,7 @@ public:
     ChannelHandler()
     {
         _is_active = false;
+        _calib_data_needs_save = false;
         _value_needs_save = false;
         actuate_ref = UINT8_MAX;
         actuate_ms = 0;
@@ -586,17 +587,81 @@ public:
     String calibrate();
     String actuate(uint8_t value, uint8_t ref = UINT8_MAX);
 
-    bool does_data_need_save() const
+    uint8_t get_value() const
+    {
+        return status.value;
+    }
+
+    void calib_data_to_eprom(std::ostream & os) const
+    {
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        os.write((const char *)&status.calib_open_2_closed_time, sizeof(status.calib_open_2_closed_time));
+        os.write((const char *)&status.calib_closed_2_open_time, sizeof(status.calib_closed_2_open_time));
+
+        #else
+
+        os.write((const char *)&status.calib_open_time, sizeof(status.calib_open_time));
+
+        #endif // ASYMMETRICAL_OPEN_CLOSE
+    }
+    
+    bool calib_data_from_eprom(std::istream & is)
+    {
+        // skip taking lock, integral data and no way to signal to possible ongoing actuation
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        is.read((char *)&status.calib_open_2_closed_time, sizeof(status.calib_open_2_closed_time));
+        is.read((char *)&status.calib_closed_2_open_time, sizeof(status.calib_closed_2_open_time));
+
+        #else
+
+        is.read((char *)&status.calib_open_time, sizeof(status.calib_open_time));
+
+        #endif // ASYMMETRICAL_OPEN_CLOSE
+
+        return !is.bad();
+    }
+
+    static bool dummy_calib_data_from_eprom(std::istream & is)
+    {
+        ProportionalStatus::Channel dummy_status;
+
+        #ifdef ASYMMETRICAL_OPEN_CLOSE
+
+        is.read((char *)&dummy_status.calib_open_2_closed_time, sizeof(dummy_status.calib_open_2_closed_time));
+        is.read((char *)&dummy_status.calib_closed_2_open_time, sizeof(dummy_status.calib_closed_2_open_time));
+
+        #else
+
+        is.read((char *)&dummy_status.calib_open_time, sizeof(dummy_status.calib_open_time));
+
+        #endif // ASYMMETRICAL_OPEN_CLOSE
+
+        return !is.bad();
+    }
+
+    bool does_calib_data_need_save() const
+    {
+        return _calib_data_needs_save;
+    }
+
+    void calib_data_saved() 
+    {
+        _calib_data_needs_save = false; 
+    }
+
+    bool does_value_need_save() const
     {
         return _value_needs_save;
     }
 
-    void data_saved() 
+    void value_saved() 
     {
         _value_needs_save = false; 
     }
 
-protected:
+    protected:
 
     void configure_hw();
 
@@ -623,6 +688,8 @@ protected:
     ProportionalConfig::ValveProfile valve_profile;
     ProportionalStatus::Channel status;
     bool _is_active;
+
+    bool _calib_data_needs_save;
     bool _value_needs_save;
 
     uint8_t actuate_ref;
@@ -640,7 +707,16 @@ class ProportionalHandler
 {
 public:
 
-    const int DATA_EPROM_VERSION = 1;
+    #ifdef ASYMMETRICAL_OPEN_CLOSE
+    
+    const int DATA_EPROM_VERSION = 2;
+
+    #else
+
+    const int DATA_EPROM_VERSION = 102;
+
+    #endif
+
 
     struct ActionAndValue
     {
@@ -754,7 +830,7 @@ void ChannelHandler::start(const ProportionalConfig::Channel &_config,
     }
     else
     {
-        // wait for calibration or actuation of proevious active time to abort (running->stop->start situation)
+        // wait for calibration or actuation of previous active time to abort (running->stop->start situation)
 
         while(status.state == ProportionalStatus::Channel::sCalibrating || 
                 status.state == ProportionalStatus::Channel::sActuating)
@@ -768,6 +844,7 @@ void ChannelHandler::start(const ProportionalConfig::Channel &_config,
         
         status.reset();
         status.state = ProportionalStatus::Channel::sIdle;
+
         status.value = config.default_value;
 
         configure_hw();
@@ -822,6 +899,7 @@ void ChannelHandler::reconfigure(const ProportionalConfig::Channel &_config)
         
         status.reset();
         status.state = ProportionalStatus::Channel::sIdle;
+
         status.value = config.default_value;
 
         configure_hw();
@@ -1336,7 +1414,9 @@ void ChannelHandler::calibration_task(void *parameter)
     }
 
     _this->actuate_ms = 0;
-    _this->status.state = ProportionalStatus::Channel::sIdle; }
+    _this->status.state = ProportionalStatus::Channel::sIdle; 
+
+    _this->_calib_data_needs_save = true; }
 
     TRACE("calibration_task: terminated, status %s", _this->status.as_string().c_str())
     vTaskDelete(NULL);
@@ -1355,7 +1435,7 @@ void ChannelHandler::actuation_task(void *parameter)
 
         if (_this->actuate_ref == 0 || _this->actuate_ref == 100)
         {
-            uint8_t current_status_value = _this->status.value;
+            uint8_t current_value = _this->status.value;
 
             uint32_t open_2_closed_time = 0;
             uint32_t closed_2_open_time = 0;
@@ -1717,10 +1797,10 @@ void ChannelHandler::actuation_task(void *parameter)
                 TRACE("after: actuate_ref %d, actuate_ms %d, actuate_add_ups %d next_actuate_ref %d", (int) _this->actuate_ref,
                     (int) _this->actuate_ms, (int) _this->actuate_add_ups, (int) _this->next_actuate_ref)
 
-                if (current_status_value != _this->status.value)
+                if (current_value != _this->status.value)
                 {
                     TRACE("actuation value has changed while actuation task was ongoing (current value %d, new value %d), "
-                        "restarting the task", (int) current_status_value, (int) _this->status.value)
+                        "restarting the task", (int) current_value, (int) _this->status.value)
 
                     continue; // while(1)    
                 }
@@ -2252,7 +2332,7 @@ bool ProportionalHandler::does_data_need_save()
 
     for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
     {
-        if ((*it)->does_data_need_save())
+        if ((*it)->does_calib_data_need_save() || (*it)->does_value_need_save())
         {
             return true;
         }
@@ -2267,7 +2347,8 @@ void ProportionalHandler::data_saved()
 
     for (auto it=channel_handlers.begin(); it!=channel_handlers.end(); ++it)
     {
-        (*it)->data_saved();
+        (*it)->calib_data_saved();
+        (*it)->value_saved();
     }
 }
 
@@ -2288,7 +2369,8 @@ void ProportionalHandler::data_to_eprom(std::ostream &os)
 
    for (auto it = channel_handlers.begin(); it != channel_handlers.end(); ++it)
     {
-        uint8_t value = (*it)->get_status().value;
+        (*it)->calib_data_to_eprom(os);
+        uint8_t value = (*it)->get_value();
         os.write((const char *)&value, sizeof(value));
         DEBUG("value %d", (int) value)
     }
@@ -2319,6 +2401,15 @@ bool ProportionalHandler::data_from_eprom(std::istream &is)
 
         for (size_t i=0; i<count; ++i)
         {
+            if (i < channel_handlers.size())
+            {
+                channel_handlers[i]->calib_data_from_eprom(is);
+            }
+            else
+            {
+                ChannelHandler::dummy_calib_data_from_eprom(is);
+            }
+
             uint8_t value = 100;
             is.read((char *)&value, sizeof(value));
             values.push_back(value);
