@@ -157,6 +157,8 @@ class AutonomTaskManager
         String mainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str);
         String mainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str);
         String mainsProbeInputALow(const String & channel_str, String & value_str);
+        void mainsProbeGetCalibrationData(JsonVariant &);
+        String mainsProbeImportCalibrationData(const JsonVariant & json);
 
         MainsProbeStatus getMainsProbeStatus() const;
 
@@ -518,6 +520,18 @@ String AutonomTaskManager::mainsProbeInputALow(const String & channel_str, Strin
 {
     TRACE("mainsProbeInputALow")
     return mains_probe_input_a_low(channel_str, value_str);
+}
+
+void AutonomTaskManager::mainsProbeGetCalibrationData(JsonVariant & json_variant)
+{
+    TRACE("mainsProbeGetCalibrationData")
+    mains_probe_get_calibration_data(json_variant);
+}
+
+String AutonomTaskManager::mainsProbeImportCalibrationData(const JsonVariant & json)
+{
+    TRACE("mainsProbeImportCalibrationData")
+    return mains_probe_import_calibration_data(json);
 }
 
 #endif // INCLUDE_MAINSPROBE
@@ -1779,6 +1793,35 @@ String actionAutonomMainsProbeInputALow(const String & channel_str, String & val
     if (autonomTaskManager.isMainsProbeActive())
     {
         return autonomTaskManager.mainsProbeInputALow(channel_str, value_str);
+    }
+    else
+    {
+        return "mains-probe not active";
+    }
+    
+    #else
+
+    return "mains-probe is not built in currrent module";
+
+    #endif // INCLUDE_MAINSPROBE
+}
+
+void getAutonomMainsProbeCalibrationData(JsonVariant & json_variant)
+{
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
+    {
+        autonomTaskManager.mainsProbeGetCalibrationData(json_variant);
+    }    
+    #endif // INCLUDE_MAINSPROBE
+}
+
+String actionAutonomMainsProbeImportCalibrationData(const JsonVariant & json)
+{
+    #ifdef INCLUDE_MAINSPROBE
+    if (autonomTaskManager.isMainsProbeActive())
+    {
+        return autonomTaskManager.mainsProbeImportCalibrationData(json);
     }
     else
     {

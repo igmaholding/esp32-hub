@@ -58,7 +58,7 @@ void connectWifi()
         {
             wifi_connect_retry_count = 0;
 
-            #ifndef DINCLUDE_PROPORTIONAL
+            #ifndef INCLUDE_PROPORTIONAL
 
             // we do not restart the target with proportional since it will start calibration / actuation
             // procedures which will eventually destroy the actuator if repeated endlessly 

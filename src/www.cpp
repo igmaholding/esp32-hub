@@ -246,24 +246,24 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
     "config":{
 
             "channels":[
-                        {"one_a":{"gpio":3, "inverted":false},
-                            "one_b":{"gpio":5, "inverted":false},
-                            "open":{"gpio":7, "inverted":false, "debounce":250},
-                            "closed":{"gpio":9, "inverted":false, "debounce":250},
+                        {"one_a":{"gpio":5, "inverted":false},
+                            "one_b":{"gpio":3, "inverted":false},
+                            "open":{"gpio":9, "inverted":false, "debounce":250},
+                            "closed":{"gpio":7, "inverted":false, "debounce":250},
                             "load_detect":{"pin":{"gpio":1,"atten":0}, "resistance":1.0, "current_threshold":0.05},
                             "valve_profile":"xs05"
                             },
-                        {"one_a":{"gpio":2, "inverted":false},
-                            "one_b":{"gpio":4, "inverted":false},
-                            "open":{"gpio":6, "inverted":false, "debounce":250},
-                            "closed":{"gpio":8, "inverted":false, "debounce":250},
+                        {"one_a":{"gpio":4, "inverted":false},
+                            "one_b":{"gpio":2, "inverted":false},
+                            "open":{"gpio":8, "inverted":false, "debounce":250},
+                            "closed":{"gpio":6, "inverted":false, "debounce":250},
                             "load_detect":{"pin":{"gpio":13,"atten":0}, "resistance":1.0, "current_threshold":0.05},
                             "valve_profile":"xs05"
                             },
-                        {"one_a":{"gpio":36, "inverted":false},
-                            "one_b":{"gpio":21, "inverted":false},
-                            "open":{"gpio":35, "inverted":false, "debounce":250},
-                            "closed":{"gpio":33, "inverted":false, "debounce":250},
+                        {"one_a":{"gpio":21, "inverted":false},
+                            "one_b":{"gpio":36, "inverted":false},
+                            "open":{"gpio":33, "inverted":false, "debounce":250},
+                            "closed":{"gpio":35, "inverted":false, "debounce":250},
                             "load_detect":{"pin":{"gpio":16,"atten":0}, "resistance":1.0, "current_threshold":0.05},
                             "valve_profile":"xs05"
                             }
@@ -274,7 +274,9 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
 
             "valve_profiles":[
                         {"name":"xs05", "open_time":6.3, "max_actuate_add_ups":1,
-                            "time_2_flow_rate":[[25,2],[30,20],[60,75], [80,80], [100,100]]
+                            "time_2_flow_rate":[[17,6],[18,12],[19,20],[20,27],[21,33],[22,38],[23,44],[24,49],[25,53],[26,57],[27,60],[28,63],
+                                                                         [29,66],[30,70],[31,72],[32,75],[33,77],[34,78],[35,81],[36,82],[37,83],[38,85],[39,86],[40,87],[45,91],
+                                                                         [50,93],[55,95],[60,96],[70,97], [100,100]]
                         
                         }
                         
@@ -330,34 +332,34 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
 
             "i2c":{"scl":{"channel":{"gpio":35}}, "sda":{"channel":{"gpio":33}}},
 
-            "input_v_channels":[
+            "input_v":[
                                 { 
                                     "addr":"0x40",
 
                                     "channels": [   
-                                                    {"channel":0, "ratio":0.20408},
-                                                    {"channel":1, "ratio":0.20408},
-                                                    {"channel":2, "ratio":0.20408}
+                                                    {"channel":0, "default_poly_beta":[]},
+                                                    {"channel":1, "default_poly_beta":[]},
+                                                    {"channel":2, "default_poly_beta":[]}
                                                 ]
                                 }
                         ],
 
-            "input_a_high_channels":[
+            "input_a_high":[
                                 { 
                                     "addr":"0x41",
 
                                     "channels": [   
-                                                    {"channel":0, "ratio":0.20408},
-                                                    {"channel":1, "ratio":0.20408},
-                                                    {"channel":2, "ratio":0.20408}
+                                                    {"channel":0, "default_poly_beta":[]},
+                                                    {"channel":1, "default_poly_beta":[]},
+                                                    {"channel":2, "default_poly_beta":[]}
                                                 ]
                                 }
                         ],
 
             "input_a_low_channels":[
-                            {"gpio":8,"atten":3, "ratio":0.20408},
-                            {"gpio":6,"atten":3, "ratio":0.20408},
-                            {"gpio":12,"atten":3, "ratio":0.20408}
+                            {"gpio":8,"atten":3, "default_poly_beta":[]},
+                            {"gpio":6,"atten":3, "default_poly_beta":[]},
+                            {"gpio":12,"atten":3, "default_poly_beta":[]}
                         ],
 
             "applets":[
@@ -536,6 +538,11 @@ RESPONSE:
 {
 }
 
+// this is a multi-point calibration; the mapping table will fill in until the maximum points is reached (currently 5)
+// and then if a more point is added - it overrides an existing point with the nearest x-value
+//
+// recommended calibration points for 230v: 8, 30, 90, 200, 300
+
 REST POST action
 URL: <base>/action/autonom/mains-probe/calibrate_v?addr=ZZ&channel=XX&value=YY // without the value -> uncalibrate
 BODY: none
@@ -574,6 +581,28 @@ RESPONSE:
 REST POST action
 URL: <base>/action/autonom/mains-probe/input_a_low?channel=XX
 BODY: none
+RESPONSE: 
+{
+}
+
+REST GET get calibration data
+URL: <base>/get/autonom/mains-probe/calibration_data
+BODY: none
+RESPONSE: 
+{
+ "input_v":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>], "poly_beta":[<floats: c0,c1,c2...>]}, ...],
+ "input_a_high":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>], "poly_beta":[<floats: c0,c1,c2...>]}, ...],
+ "input_a_low":[{"addr":"", "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>], "poly_beta":[<floats: c0,c1,c2...>]}, ...]
+}
+
+REST POST action 
+URL: <base>/action/autonom/mains-probe/import_calibration_data
+BODY:  
+{
+ "input_v":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...],
+ "input_a_high":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...],
+ "input_a_low":[{"addr":"", "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...]
+}
 RESPONSE: 
 {
 }
@@ -1381,6 +1410,40 @@ void on_action_autonom_mains_probe_input_a_low()
     onboard_led_paired = true;
 }
 
+void on_get_autonom_mains_probe_calibration_data()
+{
+    DEBUG("on_get_autonom_mains_probe_calibration_data")
+    String r = restGetAutonomMainsProbeCalibrationData();
+    DEBUG("%s", r.c_str())
+    webServer.send(200, "application/json", r.c_str());
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_mains_probe_import_calibration_data()
+{
+    DEBUG("on_action_autonom_mains_probe_import_calibration_data")
+
+    String body;
+
+    if (webServer.hasArg("plain") == false)
+    {
+        ERROR("mains-probe import calibration data POST request without a payload")
+    }
+    else
+    {
+        body = webServer.arg("plain");
+    }
+
+    String r = restActionAutonomMainsProbeImportCalibrationData(body);
+
+    webServer.send(200, "application/json", r.c_str());
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+
+    DEBUG("on_action_autonom_mains_probe_import_calibration_data done")
+}
+
 void on_action_autonom_multi_uart_command()
 {
     String command;
@@ -1489,6 +1552,7 @@ void on_get()
     }
 
     String r = restGet(resetStamp);
+    DEBUG("%s", r.c_str())
     webServer.send(200, "application/json", r.c_str());
     onboard_led_blink_once = true;
     onboard_led_paired = true;
@@ -1514,6 +1578,7 @@ void on_get_autonom()
 {
     DEBUG("on_get_autonom")
     String r = restGetAutonom();
+    DEBUG("%s", r.c_str())
     webServer.send(200, "application/json", r.c_str());
     onboard_led_blink_once = true;
     onboard_led_paired = true;
@@ -1553,6 +1618,8 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_v", HTTP_POST, on_action_autonom_mains_probe_input_v);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_a_high", HTTP_POST, on_action_autonom_mains_probe_input_a_high);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/input_a_low", HTTP_POST, on_action_autonom_mains_probe_input_a_low);
+    webServer.on("/" HARVESTER_API_KEY "/get/autonom/mains-probe/calibration_data", HTTP_GET, on_get_autonom_mains_probe_calibration_data);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/import_calibration_data", HTTP_POST, on_action_autonom_mains_probe_import_calibration_data);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/uart_command", HTTP_POST, on_action_autonom_multi_uart_command);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/audio_control", HTTP_POST, on_action_autonom_multi_audio_control);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);

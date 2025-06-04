@@ -28,6 +28,8 @@ String actionAutonomMainsProbeCalibrateALow(const String & channel_str, const St
 String actionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str);
 String actionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str);
 String actionAutonomMainsProbeInputALow(const String & channel_str, String & value_str);
+void getAutonomMainsProbeCalibrationData(JsonVariant &);
+String actionAutonomMainsProbeImportCalibrationData(const JsonVariant & json);
 
 String actionAutonomMultiUartCommand(const String & command, String & response);
 String actionAutonomMultiAudioControl(const String & source, const String & channel, const String & volume, String & response);

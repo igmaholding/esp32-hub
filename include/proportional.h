@@ -271,6 +271,16 @@ class ProportionalConfig
                        default_value == channel.default_value;
             }
 
+            bool will_need_calibrate(const Channel & new_config) const
+            {
+                return !(one_a == new_config.one_a) || !(one_b == new_config.one_b);
+            }
+
+            bool will_need_actuate(const Channel & new_config) const
+            {
+                return will_need_calibrate(new_config) || !(valve_profile == new_config.valve_profile);
+            }
+
             String as_string() const
             {
                 return String("{one_a=") + one_a.as_string() + 
@@ -466,7 +476,7 @@ struct ProportionalStatus
     {
         Channel()
         {
-            reset();
+            clear();
         }
 
         enum State
@@ -490,12 +500,20 @@ struct ProportionalStatus
             return "<unknown>";
         }
 
-        void reset()
+        void clear_keep_calib_data()
         {
             state = sUninitialized;
             error.clear();
             value = 0;
             config_open_time = 0;
+
+            actuate_add_ups = 0;
+            max_actuate_add_ups = 1;
+        }
+
+        void clear()
+        {
+            clear_keep_calib_data();
     
             #ifdef ASYMMETRICAL_OPEN_CLOSE
 

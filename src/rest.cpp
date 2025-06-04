@@ -337,7 +337,7 @@ String restActionAutonomMainsProbeCalibrateV(const String & addr_str, const Stri
 
 String restActionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const String & channel_str, const String & value_str)
 {
-  TRACE("REST action autonom mains-probe calibrate A High")
+  TRACE("REST action autonom mains-probe calibrate A-HIGH")
   DEBUG("channel %s", channel_str.c_str())
 
   return actionAutonomMainsProbeCalibrateAHigh(addr_str, channel_str, value_str);
@@ -345,7 +345,7 @@ String restActionAutonomMainsProbeCalibrateAHigh(const String & addr_str, const 
 
 String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, const String & value_str)
 {
-  TRACE("REST action autonom mains-probe calibrate A Low")
+  TRACE("REST action autonom mains-probe calibrate A-LOW")
   DEBUG("channel %s", channel_str.c_str())
 
   return actionAutonomMainsProbeCalibrateALow(channel_str, value_str);
@@ -353,7 +353,7 @@ String restActionAutonomMainsProbeCalibrateALow(const String & channel_str, cons
 
 String restActionAutonomMainsProbeInputV(const String & addr_str, const String & channel_str, String & value_str)
 {
-  TRACE("REST action autonom zero2ten input V")
+  TRACE("REST action autonom mains-probe input V")
   DEBUG("channel %s", channel_str.c_str())
 
   return actionAutonomMainsProbeInputV(addr_str, channel_str, value_str);
@@ -361,7 +361,7 @@ String restActionAutonomMainsProbeInputV(const String & addr_str, const String &
 
 String restActionAutonomMainsProbeInputAHigh(const String & addr_str, const String & channel_str, String & value_str)
 {
-  TRACE("REST action autonom zero2ten input I High")
+  TRACE("REST action autonom mains-probe input I-HIGH")
   DEBUG("channel %s", channel_str.c_str())
 
   return actionAutonomMainsProbeInputAHigh(addr_str, channel_str, value_str);
@@ -369,10 +369,48 @@ String restActionAutonomMainsProbeInputAHigh(const String & addr_str, const Stri
 
 String restActionAutonomMainsProbeInputALow(const String & channel_str, String & value_str)
 {
-  TRACE("REST action autonom zero2ten input I Low")
+  TRACE("REST action autonom mains-probe input I-LOW")
   DEBUG("channel %s", channel_str.c_str())
 
   return actionAutonomMainsProbeInputALow(channel_str, value_str);
+}
+
+String restGetAutonomMainsProbeCalibrationData()
+{
+  TRACE("REST get autonom mains-probe calibration data")
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  JsonVariant json_variant = jsonDocument.as<JsonVariant>();
+  getAutonomMainsProbeCalibrationData(json_variant);
+
+  serializeJson(jsonDocument, _buffer); 
+  return String(_buffer);
+}
+
+String restActionAutonomMainsProbeImportCalibrationData(const String & body)
+{
+  TRACE("REST action autonom mains-probe import calibration data")
+  DEBUG(body.c_str())
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  deserializeJson(jsonDocument, body);
+  JsonVariant json_variant = jsonDocument.as<JsonVariant>();
+
+  String r = actionAutonomMainsProbeImportCalibrationData(json_variant);
+  
+  
+  if (r.length())
+  {
+    r = "{\"" + r + "\"}";
+  }
+  else
+  {
+    r = "{}";
+  }
+
+  return r;
 }
 
 String restActionAutonomMultiUartCommand(const String & command, String & response)
