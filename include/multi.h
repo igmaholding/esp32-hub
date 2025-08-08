@@ -35,6 +35,10 @@ class MultiConfig
             service = config.service;
             sound = config.sound;
 
+            tm1638 = config.tm1638;
+
+            ui = config.ui;
+
             return *this;
         }
 
@@ -47,13 +51,15 @@ class MultiConfig
 
         bool operator == (const MultiConfig & config) const
         {
-            return i2s == config.i2s && i2c == config.i2c && service == config.service && sound == config.sound;
+            return i2s == config.i2s && i2c == config.i2c && service == config.service && sound == config.sound && 
+                   tm1638 == config.tm1638 && ui == config.ui;
         }
 
         String as_string() const
         {
             return String("{uart=") + uart.as_string() + ", bt=" + bt.as_string() + ", fm=" + fm.as_string() + ", i2s=" + i2s.as_string() + 
-                    ", i2c=" + i2c.as_string() + ", service=" + service.as_string() + ", sound=" + sound.as_string() + "}";
+                    ", i2c=" + i2c.as_string() + ", service=" + service.as_string() + ", sound=" + sound.as_string() + 
+                    ", tm1638=" + tm1638.as_string() + ", ui=" + ui.as_string() + "}";
         }
         
         struct I2s
@@ -183,8 +189,10 @@ class MultiConfig
 
             void clear()
             {
+                name.clear();
+                pin.clear();
                 hw = (Hw) -1;
-                reset.clear();
+                reset.clear();                
             } 
 
             static String hw_2_str(Hw hw)
@@ -209,14 +217,17 @@ class MultiConfig
 
             bool operator == (const Bt & bt) const
             {
-                return hw == bt.hw && reset == bt.reset;
+                return name == bt.name && pin == bt.pin && hw == bt.hw && reset == bt.reset;
             }
 
             String as_string() const
             {
-                return String("{hw=") + hw_2_str(hw) + ", reset=" + reset.as_string() + "}";
+                return String("{name=" + name + ", pin=" + pin + ", hw=") + hw_2_str(hw) + ", reset=" + reset.as_string() + "}";
             }
             
+            String name;
+            String pin;
+
             Hw hw;
             DigitalOutputChannelConfig reset;
         };
@@ -377,6 +388,36 @@ class MultiConfig
                 }
             }
 
+            size_t get_defined_url_count() const
+            {
+                size_t c = 0;
+
+                for (auto i=0;i<sizeof(url)/sizeof(url[0]); ++i)
+                {
+                    if (url[i].is_defined())
+                    {
+                        c += 1;
+                    }
+                }
+
+                return c;
+            }
+
+            size_t get_defined_fm_freq_count() const
+            {
+                size_t c = 0;
+
+                for (auto i=0;i<sizeof(fm_freq)/sizeof(fm_freq[0]); ++i)
+                {
+                    if (fm_freq[i].is_defined())
+                    {
+                        c += 1;
+                    }
+                }
+
+                return c;
+            }
+
             struct Url
             {
                 Url()
@@ -397,6 +438,11 @@ class MultiConfig
                 bool is_valid() const 
                 {
                     return true;
+                }
+
+                bool is_defined() const 
+                {
+                    return name.length() > 0 && value.length() > 0;
                 }
 
                 bool operator == (const Url & url) const
@@ -435,6 +481,11 @@ class MultiConfig
                 bool is_valid() const 
                 {
                     return true;
+                }
+
+                bool is_defined() const 
+                {
+                    return name.length() > 0 && value != 0;
                 }
 
                 bool operator == (const FmFreq & fm_freq) const
@@ -547,6 +598,80 @@ class MultiConfig
             int8_t gain_high_pass; // -40..3 
             uint8_t schedule[24];  // per hour: a value of ScheduleMask; 0 - disabled, 1 - enabled normal volume, 2 - enabled low volume
         };
+
+        struct Tm1638
+        {
+            Tm1638()
+            {
+            }
+
+            void clear()
+            {
+                dio.clear();
+                clk.clear();
+                dir.clear();
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                return dio.is_valid() && clk.is_valid(); // dir is optional && dir.is_valid();
+            }
+
+            bool operator == (const Tm1638 & tm1638) const
+            {
+                return dio == tm1638.dio && clk == tm1638.clk && dir == tm1638.dir;
+            }
+
+            String as_string() const
+            {
+                return String("{dio=") + dio.as_string() + ", clk=" + clk.as_string() + ", dir=" + dir.as_string() + "}";
+            }
+            
+            GenericChannelConfig dio;            
+            GenericChannelConfig clk;            
+            GenericChannelConfig dir;            
+        };
+
+        struct UI
+        {
+            UI()
+            {
+            }
+
+            void clear()
+            {
+                name.clear();
+                stb.clear();
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                return name.length() && stb.is_valid(); // dir is optional && dir.is_valid();
+            }
+
+            bool operator == (const UI & ui) const
+            {
+                return name == ui.name && stb == ui.stb;
+            }
+
+            String as_string() const
+            {
+                return String("{name=") + name + ", stb=" + stb.as_string() + "}";
+            }
+            
+            String name;            
+            GenericChannelConfig stb;            
+        };
         
         UART uart;
         
@@ -561,7 +686,117 @@ class MultiConfig
         Service service;
         
         Sound sound;
+
+        Tm1638 tm1638;
+
+        UI ui;
 };
+
+
+class AudioControlData
+{
+public:
+
+    enum Source
+    {
+        sNone  = 0,
+        sBt    = 1,
+        sWww   = 2,
+        sFm    = 3
+    };
+
+    AudioControlData() 
+    {
+        clear();
+    }
+
+    bool operator == (const AudioControlData & other) const
+    {
+        return source == other.source && channel == other.channel && volume == other.volume;
+    }
+
+    void clear() 
+    {
+        source = sNone;
+        channel = 0;
+        volume = 0;
+    }
+
+    static String source_2_str(Source _source)
+    {
+        switch (_source)
+        {
+            case sNone: return "none";
+            case sBt: return "bt";
+            case sWww: return "www";
+            case sFm: return "fm";
+            default: return "<unknown>";
+        }
+    }
+
+    static Source str_2_source(const String & _string)
+    {
+        if (source_2_str(sNone) == _string)
+        {
+            return sNone;
+        }
+        
+        if (source_2_str(sBt) == _string)
+        {
+            return sBt;
+        }
+
+        if (source_2_str(sWww) == _string)
+        {
+            return sWww;
+        }
+
+        if (source_2_str(sFm) == _string)
+        {
+            return sFm;
+        }
+
+        return (Source) -1;
+    }
+
+    String as_string() const
+    {
+        return String("{source=") + source_2_str(source) + ", channel=" + String((int) channel) + 
+               ", volume=" + String((int) volume) + "}";
+    }
+
+    void to_eprom(std::ostream &os) const
+    {
+        os.write((const char *)&source, sizeof(source));
+        os.write((const char *)&channel, sizeof(channel));
+        os.write((const char *)&volume, sizeof(volume));
+    }
+
+    bool from_eprom(std::istream &is)
+    {
+        clear();
+        is.read((char *)&source, sizeof(source));
+        is.read((char *)&channel, sizeof(channel));
+        is.read((char *)&volume, sizeof(volume));
+
+        return !is.bad();
+    }
+
+    void to_json(JsonVariant & json)
+    {
+        json.createNestedObject("audio_control_data");
+        JsonVariant jsonVariant = json["audio_control_data"];
+
+        jsonVariant["source"] = source_2_str(source);
+        jsonVariant["channel"] = (int) channel;
+        jsonVariant["volume"] = (int) volume;
+    }
+
+    Source source;
+    uint8_t channel;
+    uint8_t volume;
+};
+
 
 struct MultiStatus
 {
@@ -724,9 +959,10 @@ struct MultiStatus
 
     MultiStatus()
     {
-        volume = 0;
+        commited_volume = 0;
     }
 
+    /*
     MultiStatus(const MultiStatus & other)
     {
         if (this == & other)
@@ -737,7 +973,10 @@ struct MultiStatus
         bt = other.bt;
         www = other.www;
         fm = other.fm;
-        volume = other.volume;
+
+        audio_control_data = other.audio_control_data;
+
+        commited_volume = other.commited_volume;
         title = other.title;
         status = other.status;
     }
@@ -752,13 +991,17 @@ struct MultiStatus
         bt = other.bt;
         www = other.www;
         fm = other.fm;
-        volume = other.volume;
+
+        audio_control_data = other.audio_control_data;
+
+        commited_volume = other.commited_volume;
         title = other.title;
         status = other.status;
 
         return *this;
     }
-
+    */
+    
     void to_json(JsonVariant & json)
     {
         json.createNestedObject("multi");
@@ -768,7 +1011,9 @@ struct MultiStatus
         www.to_json(jsonVariant);
         fm.to_json(jsonVariant);
 
-        jsonVariant["volume"] = volume;
+        audio_control_data.to_json(jsonVariant);
+
+        jsonVariant["commited_volume"] = commited_volume;
         jsonVariant["title"] = title;
         jsonVariant["status"] = status;
     }
@@ -776,7 +1021,10 @@ struct MultiStatus
     Www www;
     Fm fm;
     Bt bt;
-    uint8_t volume;
+
+    AudioControlData audio_control_data;
+
+    uint8_t commited_volume;
     String title;
     String status;
 };

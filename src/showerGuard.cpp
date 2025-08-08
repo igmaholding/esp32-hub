@@ -1670,7 +1670,14 @@ float ShowerGuardHandler::read_lumi(const ShowerGuardConfig::Lumi &lumi)
     {
         unsigned ldr_reading = analog_read(lumi.ldr.gpio);
         // DEBUG("ldr_reading %d", (int) ldr_reading)
-        return float(int((float(ldr_reading) / float(4095))*100));
+        float r = float(int((float(ldr_reading) / float(4095))*100));
+
+        if (r > 100)
+        {
+            r = 100;
+        }
+
+        return r;
     }
 
     return 0;

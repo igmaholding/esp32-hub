@@ -326,6 +326,56 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
     
 }]
 
+ 
+[{
+    "function":"multi", 
+    "config":{
+
+        "uart":{"uart_num":2, "tx":{"channel":{"gpio":17}}, "rx":{"channel":{"gpio":18}}},
+
+        "bt" : {"name":"apt2", "pin":"4321", "hw":"FSC-BT955","reset":{"gpio":19, "inverted":true}},
+        
+        "fm":{"hw":"RDA5807", "addr":"0x60"},
+
+        "i2s":{"dout":{"channel":{"gpio":6}}, "bclk":{"channel":{"gpio":4}},"lrc":{"channel":{"gpio":5}}},
+        
+        "i2c":{"scl":{"channel":{"gpio":8}}, "sda":{"channel":{"gpio":7}}},
+
+        "service":{"url":[{"name":"lugna", "value":"http://fm03-ice.stream.khz.se/fm03_aac"}, 
+                          {"name":"ffh-de", "value":"http://mp3.ffh.de/radioffh/hqlivestream.aac"},
+                          {"name":"heart00s", "value":"http://vis.media-ice.musicradio.com/Heart00s"},
+                          {"name":"power", "value":"http://fm03-ice.stream.khz.se/fm04_aac"},
+                          {"name":"rix", "value":"http://fm03-ice.stream.khz.se/fm01_aac"}
+                         ],
+                   
+                   "url_select": 1,  
+                   
+                   "fm_freq":[{"name":"nrj", "value":105.5}, 
+                              {"name":"star", "value":107.1},
+                              {"name":"lugna", "value":104.7},
+                              {"name":"rix", "value":106.7},
+                              {"name":"p3", "value":99.3}
+                             ],
+                             
+                   "fm_freq_select": 0
+                   
+                   },
+        
+        "sound":{"hw":"TDA8425", "addr":"0x41", "mute":{"gpio":9, "inverted":false}, "volume":100, "volume_low":30, 
+                 "gain_low_pass":7, "gain_band_pass":0, "gain_high_pass":10,
+                 "schedule":[1,1,1,1,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]},
+
+        "tm1638":{"dio":{"channel":{"gpio":37}}, "clk":{"channel":{"gpio":38}}, , "dir":{"channel":{"gpio":xxx}}},
+
+        "ui":{"name":"apt1", "stb":{"channel":{"gpio":39}}}
+    }
+}]   
+
+        # volume is 0..100, it is a max volume applied according to schedule
+        #
+        # tone gain is in dB; note that band_pass might not be supported; in this case if the value is not 0
+        # it will be used to offset low and high pass values
+
 [{
     "function":"mains-probe", 
     "config":{
@@ -367,53 +417,6 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
                 },
     
 }]
-
-[{
-    "function":"multi", 
-    "config":{
-
-        "uart":{"uart_num":2, "tx":{"channel":{"gpio":17}}, "rx":{"channel":{"gpio":18}}},
-
-        "bt" : {"hw":"FSC-BT955","reset":{"gpio":19, "inverted":true}},
-        
-        "fm":{"hw":"RDA5807", "addr":"0x60"},
-
-        "i2s":{"dout":{"channel":{"gpio":6}}, "bclk":{"channel":{"gpio":4}},"lrc":{"channel":{"gpio":5}}},
-        
-        "i2c":{"scl":{"channel":{"gpio":8}}, "sda":{"channel":{"gpio":7}}},
-
-        "service":{"url":[{"name":"lugna", "value":"http://fm03-ice.stream.khz.se/fm03_aac"}, 
-                          {"name":"ffh-de", "value":"http://mp3.ffh.de/radioffh/hqlivestream.aac"},
-                          {"name":"heart00s", "value":"http://vis.media-ice.musicradio.com/Heart00s"},
-                          {"name":"power", "value":"http://fm03-ice.stream.khz.se/fm04_aac"},
-                          {"name":"rix", "value":"http://fm03-ice.stream.khz.se/fm01_aac"}
-                         ],
-                   
-                   "url_select": 1,  
-                   
-                   "fm_freq":[{"name":"rix", "value":101.7}, 
-                              {"name":"star", "value":90.4},
-                              {"name":"p1", "value":91.2},
-                              {"name":"p2", "value":94.6},
-                              {"name":"p3", "value":96.5}
-                             ],
-                             
-                   "fm_freq_select": 0
-                   
-                   },
-        
-        "sound":{"hw":"TDA8425", "addr":"0x41", "mute":{"gpio":9, "inverted":false}, "volume":100, "volume_low":30, 
-                 "gain_low_pass":7, "gain_band_pass":0, "gain_high_pass":10,
-                 "schedule":[1,1,1,1,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}                
-    }
-}]   
-
-        # volume is 0..100, it is a max volume applied according to schedule
-        #
-        # tone gain is in dB; note that band_pass might not be supported; in this case if the value is not 0
-        # it will be used to offset low and high pass values
-
-
 
 
 REST POST cleanup
@@ -677,22 +680,89 @@ URL: <base>/get/autonom
 BODY: none
 RESPONSE: 
 {
- "shower-guard":{"temp":22.1,"rh":19.8,"motion":false,"light":false,"fan":false,"light_decision":"","fan_decision":"rh-low 44.7/45.0 at 2022-12-16 11:04:53"},   
- {'keybox': {'status': '0:0 1:1 2:1 3:1 4:0 5:1 6:1 7:1 8:0 9:0 10:1 11:0 12:1 13:1 14:0 (1==unlocked)'}, 
-
- {
-    "audio": {
-        "motion": "true",
-        "is_streaming": "true",
-        "volume": 10,
-        "url_index": 1,
-        "bitrate": 128000,
-        "title": "Du horst HIT RADIO FFH"
+    {
+        "shower-guard":{"temp":22.1,"rh":19.8,"motion":false,"light":false,"fan":false,"light_decision":"","fan_decision":"rh-low 44.7/45.0 at 2022-12-16 11:04:53"},   
     }
- {"proportional":{"channel[0]":{"state":"idle", "error":"", "value":22, "config_open_time":6.2, "calib_open_time":6.0}, ...}},   
- }
 
- 'system': {'uptime': '46d 22h 02m 10s'}
+    {
+        "keybox": {'status': '0:0 1:1 2:1 3:1 4:0 5:1 6:1 7:1 8:0 9:0 10:1 11:0 12:1 13:1 14:0 (1==unlocked)'}, 
+    }
+
+    {    
+        "audio": {
+            "motion": "true",
+            "is_streaming": "true",
+            "volume": 10,
+            "url_index": 1,
+            "bitrate": 128000,
+            "title": "Du horst HIT RADIO FFH"
+        }
+    }   
+    
+    { 
+        "proportional":{"channel[0]":{"state":"idle", "error":"", "value":22, "config_open_time":6.2, "calib_open_time":6.0}, ...}},   
+    }
+
+    {
+        "multi": {
+            "bt": {
+                "latest_indications": {
+                    "AVRCPCFG": "15",
+                    "BTEN": "0",
+                    "I2SCFG": "0",
+                    "NAME": "APT2",
+                    "PIN": "4321",
+                    "PROFILE": "176",
+                    "SPKVOL": "0,14",
+                    "SSP": "0"
+                }
+            },
+            "www": {
+                "is_streaming": true,
+                "url_index": 1,
+                "url_name": "ffh-de",
+                "bitrate": 128000
+            },
+            "fm": {
+                "is_streaming": false,
+                "index": -1,
+                "name": "",
+                "freq": 0
+            },
+            "volume": 40,
+            "title": "Alvaro Soler x Topic - Solo Para Ti",
+            "status": ""
+        }
+    }
+
+    {
+        "mains-probe":{"status":"",
+                       "input_v_channels":{
+                                            "0x40":{
+                                                    "channel[0]":{"value":242.8183136,"status":""},
+                                                    "channel[1]":{"value":242.1123962,"status":""},
+                                                    "channel[2]":{"value":247.1510315,"status":""}
+                                            }
+                        },
+
+                        "input_a_high_channels":{  same format as input_v_channels },
+                        "input_a_low_channels":{ same format as input_v_channels but without the addr level },
+                        "applet":{}}
+    }
+
+
+    {
+        "zero2ten":{"status":"","
+                    input":{"channel[0]":{"type":"input","value":0,"calibration_coefficient":1.024590492,"duty":0,"status":""},
+                            "channel[1]":{"type":"input","value":0,"calibration_coefficient":1.049023747,"duty":0,"status":""},
+                            "channel[2]":{"type":"input","value":0.006377551,"calibration_coefficient":1.066083789,"duty":0,"status":""},
+                            "channel[3]":{"type":"input","value":0.004806152,"calibration_coefficient":1.071207523,"duty":0,"status":""}},
+                    "output":{"channel[0]":{"type":"output","value":1.804999948,"calibration_coefficient":0.881999969,"duty":0.159189403,"status":""},
+                              "channel[1]":{"type":"output","value":4.859999657,"calibration_coefficient":0.868000031,"duty":0.421839714,"status":""},
+                              "channel[2]":{"type":"output","value":10,"calibration_coefficient":0.884000003,"duty":0.888359904,"status":""},
+                              "channel[3]":{"type":"output","value":10,"calibration_coefficient":0.881999969,"duty":0.88640666,"status":""}},
+                    "applet":{"utk":{"function":"temp2out","time":"2025-07-03 00:54.52","temp_addr":"28-031997797ae2","temp":11.89999962,"output_value":1.804999948,"status":""}}}
+    }
 
 }
 

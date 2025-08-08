@@ -7,6 +7,10 @@
 #include <eeprom.h>
 #include <esp_log.h>
 
+#ifdef INCLUDE_ETHHUB
+#include <EthernetESP32.h>
+#endif
+
 #include <autonom.h>
 #include <wifiHandler.h>
 #include <wifiNetworks.h>
@@ -20,6 +24,10 @@
 // epromimage.cpp would not be found unless it is included and used (?) here, in the main project
 
 WifiHandler wifiHandler;
+
+#ifdef INCLUDE_ETHHUB
+EMACDriver driver(ETH_PHY_LAN8720, 23, 18, 16);
+#endif
 
 const int MAX_WIFI_CONNECT_RETRIES = 20;
 
@@ -96,6 +104,22 @@ void setup()
 
     Serial.begin(9600);
     //Serial.write("DIRECT: SERIAL BEGIN");
+
+    #ifdef INCLUDE_ETHHUB
+
+    Ethernet.init(driver);
+    if (Ethernet.linkStatus() == LinkOFF) {
+      Serial.println("Ethernet cable not connected / Câble Ethernet non connecté.");
+    }
+    Serial.println("Ethernet init by DHCP / Initialisation Ethernet par DHCP:");
+    if (Ethernet.begin()) {
+      Serial.println("IP address / Adresse IP Ethernet assignée par DHCP : " + Ethernet.localIP().toString());
+    } else {
+      Serial.println("Failed to configure Ethernet using DHCP");
+      delay(1);
+    }
+  
+    #endif
 
     EEPROM.begin(EEPROM_SIZE);
 
