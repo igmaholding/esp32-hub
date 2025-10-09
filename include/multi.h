@@ -641,12 +641,15 @@ class MultiConfig
         {
             UI()
             {
+                clear();
             }
 
             void clear()
             {
                 name.clear();
                 stb.clear();
+                audio_enabled = true;
+                thermostat_enabled = true;
             }
 
             void from_json(const JsonVariant & json);
@@ -661,16 +664,19 @@ class MultiConfig
 
             bool operator == (const UI & ui) const
             {
-                return name == ui.name && stb == ui.stb;
+                return name == ui.name && stb == ui.stb && audio_enabled == ui.audio_enabled && thermostat_enabled == ui.thermostat_enabled;
             }
 
             String as_string() const
             {
-                return String("{name=") + name + ", stb=" + stb.as_string() + "}";
+                return String("{name=") + name + ", stb=" + stb.as_string() + ", audio_enabled=" + (audio_enabled ? "true" : "false") + 
+                        ", thermostat_enabled=" + (thermostat_enabled ? "true" : "false") + "}";
             }
             
             String name;            
-            GenericChannelConfig stb;            
+            GenericChannelConfig stb;
+            bool audio_enabled;
+            bool thermostat_enabled;            
         };
         
         UART uart;
@@ -759,6 +765,18 @@ public:
         return (Source) -1;
     }
 
+    static Source next_source(Source current)
+    {
+        switch(current)
+        {
+            case sNone: return sBt;
+            case sBt: return sWww;
+            case sWww: return sFm;
+            case sFm: return sNone;
+            default: return sNone;
+        }
+    } 
+
     String as_string() const
     {
         return String("{source=") + source_2_str(source) + ", channel=" + String((int) channel) + 
@@ -794,7 +812,7 @@ public:
 
     Source source;
     uint8_t channel;
-    uint8_t volume;
+    uint8_t volume;   // original volume is 0 to 100 linear 
 };
 
 
@@ -957,6 +975,32 @@ struct MultiStatus
         float freq;
     };
 
+    struct UI
+    {
+        UI()
+        {
+            temp_corr = 0;
+            temp_corr_set = false;
+        }
+
+        void to_json(JsonVariant & json)
+        {
+            json.createNestedObject("ui");
+            JsonVariant jsonVariant = json["ui"];
+
+            jsonVariant["name"] = name;
+            
+            if (temp_corr_set)
+            {
+                jsonVariant["temp_corr"] = temp_corr;
+            }
+        }
+
+        String name;
+        float temp_corr;
+        bool temp_corr_set;
+    };
+
     MultiStatus()
     {
         commited_volume = 0;
@@ -1010,6 +1054,7 @@ struct MultiStatus
         bt.to_json(jsonVariant);
         www.to_json(jsonVariant);
         fm.to_json(jsonVariant);
+        ui.to_json(jsonVariant);
 
         audio_control_data.to_json(jsonVariant);
 
@@ -1021,6 +1066,7 @@ struct MultiStatus
     Www www;
     Fm fm;
     Bt bt;
+    UI ui;
 
     AudioControlData audio_control_data;
 
@@ -1037,6 +1083,7 @@ void reconfigure_multi(const MultiConfig &);
 
 String multi_uart_command(const String & command, String & response);
 String multi_audio_control(const String & source, const String & channel, const String & volume, String & response);
+String multi_set_volatile(const JsonVariant & json);
 
 
 MultiStatus get_multi_status();

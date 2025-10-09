@@ -662,7 +662,11 @@ public:
         // when adding new points both because of more input material and also because the order of polynom will increase
 
         static const uint8_t X_2_Y_MAP_MAX_SIZE = 5;
-        static const int MAX_POLY_ORDER = 3;
+
+        // we cannot use order higher than 2 since we likely need extrapolation; a polynom with higher order
+        // may start shoot randomly outside calibration zone
+         
+        static const int MAX_POLY_ORDER = 2;
 
         InputChannelData() 
         {
@@ -1026,6 +1030,18 @@ public:
             if (x == 0.)
             {
                 return 0.;
+            }
+
+            if (x_2_y_map[0][0] > 0. && x < x_2_y_map[0][0])
+            {
+               // if x is less than the first point in the mapping table - do a local linear approximation between [0,0]
+               // and the first point in the mapping table
+
+               // this is due to the fact that beginning of the range (most for input_v, less for input_a_high and even less for input_a_low)
+               // is more non-linear than the rest of the range due to schematics; artificially including point [0,0] will do more harm
+               // to the higher end of the range
+
+               return (x * x_2_y_map[0][1]) / x_2_y_map[0][0];
             }
 
             if (_has_poly_beta == true)
@@ -2246,6 +2262,8 @@ String MainsProbeHandler::import_calibration_data(const JsonVariant & json)
             "input_v", "input_a_high", "input_a_low"
         };
 
+        const int INPUT_A_LOW_INDEX = 2;
+
         std::vector<InputChannelData>* input_vector[] = 
         {
             & input_v_channel_data, & input_a_high_channel_data, & input_a_low_channel_data
@@ -2264,9 +2282,11 @@ String MainsProbeHandler::import_calibration_data(const JsonVariant & json)
                     const JsonArray & jsonArray = _json.as<JsonArray>();
                     auto iterator = jsonArray.begin();
 
+                    size_t in_index=0;
+
                     while(iterator != jsonArray.end())
                     {
-                        //DEBUG("%s item", input_type_str[k])
+                        DEBUG("%s item %d", input_type_str[k], (int) in_index)
                         const JsonVariant & __json = *iterator;
 
                         InputChannelData input_channel_data;
@@ -2275,16 +2295,31 @@ String MainsProbeHandler::import_calibration_data(const JsonVariant & json)
                         {
                             bool found = false;
 
-                            for (auto it=input_vector[k]->begin(); it!=input_vector[k]->end(); ++it)
+                            if (k == INPUT_A_LOW_INDEX)
                             {
-                                if (it->addr == input_channel_data.addr && it->index == input_channel_data.index)
+                                if (in_index < input_vector[k]->size())
                                 {
                                     found = true;
-                                    *it = input_channel_data;
+                                    (*input_vector[k])[in_index] = input_channel_data;
 
-                                    DEBUG("Imported %s calibration data item", input_type_str[k])
-                                    it->debug();
-                                    break;
+                                    DEBUG("Imported %s calibration data item (in_index %d)", input_type_str[k], (int) in_index)
+                                    (*input_vector[k])[in_index].debug();
+
+                                }
+                            }
+                            else
+                            {
+                                for (auto it=input_vector[k]->begin(); it!=input_vector[k]->end(); ++it)
+                                {
+                                    if (it->addr == input_channel_data.addr && it->index == input_channel_data.index)
+                                    {
+                                        found = true;
+                                        *it = input_channel_data;
+
+                                        DEBUG("Imported %s calibration data item", input_type_str[k])
+                                        it->debug();
+                                        break;
+                                    }
                                 }
                             }
 
@@ -2294,8 +2329,13 @@ String MainsProbeHandler::import_calibration_data(const JsonVariant & json)
                                     input_type_str[k], (int) input_channel_data.addr, (int) input_channel_data.index)
                             }
                         }
+                        else
+                        {
+                            ERROR("input_channel_data.from_json(__json) == false")
+                        }
 
                         ++iterator;
+                        ++in_index;
                     }
                 }
             }

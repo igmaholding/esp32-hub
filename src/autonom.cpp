@@ -103,9 +103,16 @@ class AutonomTaskManager
         
         String rfidLockProgram(const String & code_str, uint16_t timeout);
 
-        String rfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
-                           const String & type_str, 
-                           RfidLockConfig::Codes & codes_after);
+        String rfidLockAddCode(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                               const String & type_str);
+
+        String rfidLockDeleteCode(const String & name_str);
+
+        String rfidLockDeleteAllCodes();
+
+        String rfidLockUnlock(const String & lock_channel_str);
+
+        void rfidLockGetCodes(JsonVariant &);
 
         RfidLockStatus getRfidLockStatus() const;
 
@@ -174,6 +181,7 @@ class AutonomTaskManager
         
         String multiUartCommand(const String & command, String & response);
         String multiAudioControl(const String & source, const String & channel, const String & volume, String & response);
+        String multiSetVolatile(const JsonVariant & json);
 
         MultiStatus getMultiStatus() const;
 
@@ -318,16 +326,10 @@ String AutonomTaskManager::rfidLockProgram(const String & code_str, uint16_t tim
     return rfid_lock_program(code_str, timeout);
 }
 
-String AutonomTaskManager::rfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
-                                       const String & type_str, 
-                                       RfidLockConfig::Codes & codes_after)
+String AutonomTaskManager::rfidLockAddCode(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                           const String & type_str)
 {
-    RfidLockConfig::Codes codes_before;
-    rfid_lock_get_codes(codes_before);
     String r;
-    //DEBUG("rfid_lock_get_codes %s", codes_before.as_string().c_str())
-    codes_after = codes_before;
-    //DEBUG("copy %s", codes_after.as_string().c_str())
 
     RfidLockConfig::Codes::Code::Type type = RfidLockConfig::Codes::Code::str_2_type(type_str.c_str());
 
@@ -342,13 +344,35 @@ String AutonomTaskManager::rfidLockAdd(const String & name_str, const String & c
         code.value = code_str;
         code.locks = locks;
 
-        codes_after.codes[name_str] = code;
-
-        //DEBUG("codes_after %s", codes_after.as_string().c_str())
-        rfid_lock_update_codes(codes_after);
+        rfid_lock_add_code(name_str, code);
     }
 
     return r;
+}
+
+String AutonomTaskManager::rfidLockDeleteCode(const String & name_str)
+{
+    return rfid_lock_delete_code(name_str);
+}
+
+String AutonomTaskManager::rfidLockDeleteAllCodes()
+{
+    String r;
+
+    r = rfid_lock_delete_all_codes();
+
+    return r;
+}
+
+String AutonomTaskManager::rfidLockUnlock(const String & lock_channel_str)
+{
+    return rfid_lock_unlock(lock_channel_str);
+}
+
+void AutonomTaskManager::rfidLockGetCodes(JsonVariant & json_variant)
+{
+    TRACE("rfidLockGetCodes")
+    rfid_lock_get_codes(json_variant);
 }
 
 RfidLockStatus AutonomTaskManager::getRfidLockStatus() const
@@ -569,6 +593,12 @@ String AutonomTaskManager::multiAudioControl(const String & source, const String
 {
     TRACE("multiAudioControl")
     return multi_audio_control(source, channel, volume, response);
+}
+
+String AutonomTaskManager::multiSetVolatile(const JsonVariant & json)
+{
+    TRACE("multiSetVolatile")
+    return multi_set_volatile(json);
 }
 
 MultiStatus AutonomTaskManager::getMultiStatus() const
@@ -912,6 +942,7 @@ String setupAutonom(const JsonVariant & json)
                         {
                             TRACE("adding function %s to EEPROM image", function.c_str())
 
+                            /*
                             // we need to preserve codes while reconfiguring, so have to load from the
                             // currentConfigVolume first
 
@@ -943,6 +974,7 @@ String setupAutonom(const JsonVariant & json)
                                     break;
                                 }
                             }
+                            */
 
                             // do not stop saving if current codes retrieval fails - just inform
 
@@ -1454,97 +1486,10 @@ String actionAutonomRfidLockProgram(const String & code_str, uint16_t timeout)
     #endif // INCLUDE_RFIDLOCK
 }
 
-#ifdef INCLUDE_RFIDLOCK
 
-static String actionAutonomRfidLockCodesUpdate(const RfidLockConfig::Codes & codes_after)
-{
-    #ifdef INCLUDE_RFIDLOCK
 
-    TRACE("Updating RfidLock codes")
-
-    if (autonomTaskManager.isRfidLockActive())
-    {
-        Lock lock(AutonomConfigVolumeSemaphore);
-        EpromImage configVolume(AUTONOM_CONFIG_VOLUME);
-        String r;
-
-        if (configVolume.read() == true)
-        {
-            TRACE("EPROM image read success")
-
-            for (auto it = configVolume.blocks.begin(); it != configVolume.blocks.end(); ++it)
-            {
-                const char * function_type_str = function_type_2_str((FunctionType) it->first);
-
-                if(it->first == ftRfidLock)
-                {
-                    std::istringstream is(it->second);
-                    TRACE("EPROM image, found ftRfidLock block")
-
-                    {RfidLockConfig config;
-                    
-                    if (config.from_eprom(is) == true)
-                    {
-                        TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
-                        TRACE("Config %s", config.as_string().c_str())
-
-                        TRACE("codes_before %s", config.codes.as_string().c_str())
-
-                        if (!(config.codes == codes_after))
-                        {
-                            TRACE("codes_after %s", codes_after.as_string().c_str())
-                            TRACE("EPROM image needs update")
-
-                            config.codes = codes_after;
-
-                            std::ostringstream os;
-                            config.to_eprom(os);
-                            
-                            std::string buffer = os.str();
-                            TRACE("block size %d", (int) os.tellp())
-                            configVolume.blocks[(uint8_t) ftRfidLock] = buffer;
-
-                            configVolume.write();
-                        }
-                        else
-                        {
-                            TRACE("codes unchanged, skip updating EPROM")
-                        }
-                    }
-                    else
-                    {
-                        r = "Config read failure";
-                        ERROR(r.c_str())
-                    }}
-
-                    break;
-                }
-            }
-        }
-        else
-        {
-            r = "Failed to read EPROM image";
-            ERROR(r.c_str())
-        }
-        return r;
-    }
-    else
-    {
-        String r = "RfidLock not active";
-        ERROR(r.c_str())
-        return r;
-    }
-
-    #else
-
-    return "RfidLock is not built in currrent module";
-
-    #endif // INCLUDE_RFIDLOCK
-}
-#endif
-
-String actionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
-                                const String & type_str)
+String actionAutonomRfidLockAddCode(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                    const String & type_str)
 {
     #ifdef INCLUDE_RFIDLOCK
 
@@ -1552,14 +1497,7 @@ String actionAutonomRfidLockAdd(const String & name_str, const String & code_str
 
     if (autonomTaskManager.isRfidLockActive())
     {
-        RfidLockConfig::Codes codes_after;
-        
-        String r = autonomTaskManager.rfidLockAdd(name_str, code_str, locks, type_str, codes_after);
-
-        if (r.isEmpty())
-        {
-            r = actionAutonomRfidLockCodesUpdate(codes_after);
-        }
+        String r = autonomTaskManager.rfidLockAddCode(name_str, code_str, locks, type_str);
         return r;
     }
     else
@@ -1576,6 +1514,90 @@ String actionAutonomRfidLockAdd(const String & name_str, const String & code_str
     #endif // INCLUDE_RFIDLOCK
 }
 
+String actionAutonomRfidLockDeleteCode(const String & name_str)
+{
+    #ifdef INCLUDE_RFIDLOCK
+
+    TRACE("Deleting RfidLock code")
+
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        String r = autonomTaskManager.rfidLockDeleteCode(name_str);
+        return r;
+    }
+    else
+    {
+        String r = "RfidLock not active";
+        ERROR(r.c_str())
+        return r;
+    }
+
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+
+String actionAutonomRfidLockDeleteAllCodes()
+{
+    #ifdef INCLUDE_RFIDLOCK
+
+    TRACE("Deleting all RfidLock codes")
+
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        String r = autonomTaskManager.rfidLockDeleteAllCodes();
+        return r;
+    }
+    else
+    {
+        String r = "RfidLock not active";
+        ERROR(r.c_str())
+        return r;
+    }
+
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+
+String actionAutonomRfidLockUnlock(const String & lock_channel_str)
+{
+    #ifdef INCLUDE_RFIDLOCK
+
+    TRACE("Unlocking RfidLock")
+
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        String r = autonomTaskManager.rfidLockUnlock(lock_channel_str);
+        return r;
+    }
+    else
+    {
+        String r = "RfidLock not active";
+        ERROR(r.c_str())
+        return r;
+    }
+
+    #else
+
+    return "RfidLock is not built in currrent module";
+
+    #endif // INCLUDE_RFIDLOCK
+}
+
+void getAutonomRfidLockCodes(JsonVariant & json_variant)
+{
+    #ifdef INCLUDE_RFIDLOCK
+    if (autonomTaskManager.isRfidLockActive())
+    {
+        autonomTaskManager.rfidLockGetCodes(json_variant);
+    }    
+    #endif // INCLUDE_RFIDLOCK
+}
 
 String actionAutonomProportionalCalibrate(const String & channel_str)
 {
@@ -1874,6 +1896,25 @@ String actionAutonomMultiAudioControl(const String & source, const String & chan
     #endif // INCLUDE_MULTI
 }
 
+String actionAutonomMultiSetVolatile(const JsonVariant & json)
+{
+    #ifdef INCLUDE_MULTI
+    if (autonomTaskManager.isMultiActive())
+    {
+        return autonomTaskManager.multiSetVolatile(json);
+    }
+    else
+    {
+        return "multi not active";
+    }
+    
+    #else
+
+    return "multi is not built in currrent module";
+
+    #endif // INCLUDE_MULTI
+}
+
 void getAutonom(JsonVariant & json)
 {
   TRACE("getAutonom")
@@ -2034,7 +2075,7 @@ void restoreAutonom()
                 {
                     TRACE("Config is_valid=%s", (config.is_valid() ? "true" : "false"))
                     TRACE("Config %s", config.as_string().c_str())
-                    TRACE("Codes %s", config.codes.as_string().c_str())
+                    //TRACE("Codes %s", config.codes.as_string().c_str())
 
                     autonomTaskManager.startRfidLock(config);
                 }

@@ -1082,6 +1082,16 @@ void MultiConfig::UI::from_json(const JsonVariant &json)
             stb.from_json(__json);
         }
     }
+
+    if (json.containsKey("audio_enabled"))
+    {
+        audio_enabled = json["audio_enabled"];
+    }
+
+    if (json.containsKey("thermostat_enabled"))
+    {
+        thermostat_enabled = json["thermostat_enabled"];
+    }
 }
 
 void MultiConfig::UI::to_eprom(std::ostream &os) const
@@ -1095,6 +1105,8 @@ void MultiConfig::UI::to_eprom(std::ostream &os) const
     }
 
     stb.to_eprom(os);
+    os.write((const char *)&audio_enabled, sizeof(audio_enabled));
+    os.write((const char *)&thermostat_enabled, sizeof(thermostat_enabled));
 }
 
 bool MultiConfig::UI::from_eprom(std::istream &is)
@@ -1116,6 +1128,8 @@ bool MultiConfig::UI::from_eprom(std::istream &is)
     }
 
     stb.from_eprom(is);
+    is.read((char *)&audio_enabled, sizeof(audio_enabled));
+    is.read((char *)&thermostat_enabled, sizeof(thermostat_enabled));
 
     return is_valid() && !is.bad();
 }

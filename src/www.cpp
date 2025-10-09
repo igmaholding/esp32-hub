@@ -9,6 +9,10 @@
 
 WebServer webServer(80);
 
+#define MAX_BODY_SIZE 16000
+
+#define ASSERT_BODY_SIZE(_body_) if (_body_.length() > MAX_BODY_SIZE) { ERROR("JSON body exceeds %d bytes", (int) MAX_BODY_SIZE); _body_.clear(); }
+
 /*
 
 REST POST restart
@@ -222,7 +226,7 @@ RESPONSE:
                           {"value":"http://fm03-ice.stream.khz.se/fm01_aac"}
                          ],
                    "url_select": 1},
-        "sound":{"volume":10, "volume_low":6, 
+        "sound":{"volume":100, "volume_low":30, 
                  "gain_low_pass":0, "gain_band_pass":-7, "gain_high_pass":3,
                  "schedule":[0,0,0,0,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2]}                
     }
@@ -231,13 +235,55 @@ RESPONSE:
 [{
     "function":"rfid-lock", 
     "config":{
+                "rfid":{"protocol":"SPI", "hw":"RC522", "resetPowerDownPin":21, "chipSelectPin":5, "mosiPin":23, "misoPin":19, "clkPin":18},
+
+                "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}},  // keypad can be 4x4 or 3x4 
+                            {"channel":{"gpio":26, "inverted":false}}, 
+                            {"channel":{"gpio":27, "inverted":false}}],
+                        "l":[{"channel":{"gpio":34, "inverted":true}}, 
+                            {"channel":{"gpio":35, "inverted":true}}, 
+                            {"channel":{"gpio":36, "inverted":true}}, 
+                            {"channel":{"gpio":39, "inverted":true}}],
+                        "debounce":250
+                },
+
+                "lock":{"channels":{"main":{"gpio":17, "inverted":0, "coilon_active":1}, 
+                                    "sb1":{"gpio":16, "inverted":0, "coilon_active":1},
+                                    "sb2":{"gpio":13, "inverted":0, "coilon_active":1},
+                                    "sb3":{"gpio":4, "inverted":0, "coilon_active":1}
+                                    }, "linger":3},
+
+                "buzzer":{"channel":{"gpio":12, "inverted":false}},
+
+                "green_led":{"gpio":15, "inverted":false},
+
+                "red_led":{"gpio":14, "inverted":false}
+    }
+}]
+                KEYPAD 4x4
+                "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}},  // keypad can be 4x4 or 3x4 
+                            {"channel":{"gpio":26, "inverted":false}}, 
+                            {"channel":{"gpio":27, "inverted":false}}, 
+                            {"channel":{"gpio":32, "inverted":false}}],
+                        "l":[{"channel":{"gpio":34, "inverted":true}}, 
+                            {"channel":{"gpio":35, "inverted":true}}, 
+                            {"channel":{"gpio":36, "inverted":true}}, 
+                            {"channel":{"gpio":39, "inverted":true}}],
+                        "debounce":250
+                },
+
+                for I2C (not supported by the breakout)
+                "rfid":{"protocol":"I2C", "hw":"RC522", "sclPin":23<same as MOSI>, "sdaPin":5<same as chipSelect>, "i2cAddress":40},
+
+                PROTOTYPE1
                 "rfid":{"protocol":"SPI", "hw":"RC522", "resetPowerDownPin":13, "chipSelectPin":5, "sclPin":22, "sdaPin":21, "i2cAddress":40},
                 "lock":{"channels":{"main":{"gpio":32, "inverted":0, "coilon_active":1}}, "linger":3},
                 "buzzer":{"channel":{"gpio":27, "inverted":false}},
                 "green_led":{"gpio":14, "inverted":false},
                 "red_led":{"gpio":12, "inverted":false}
-    }
-}]
+
+
+
 
 ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mode, e.g. not starting! not use!
 
@@ -333,7 +379,7 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
 
         "uart":{"uart_num":2, "tx":{"channel":{"gpio":17}}, "rx":{"channel":{"gpio":18}}},
 
-        "bt" : {"name":"apt2", "pin":"4321", "hw":"FSC-BT955","reset":{"gpio":19, "inverted":true}},
+        "bt" : {"name":"apt1", "pin":"4321", "hw":"FSC-BT1036","reset":{"gpio":19, "inverted":true}},
         
         "fm":{"hw":"RDA5807", "addr":"0x60"},
 
@@ -365,11 +411,12 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
                  "gain_low_pass":7, "gain_band_pass":0, "gain_high_pass":10,
                  "schedule":[1,1,1,1,0,0,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]},
 
-        "tm1638":{"dio":{"channel":{"gpio":37}}, "clk":{"channel":{"gpio":38}}, , "dir":{"channel":{"gpio":xxx}}},
+        "tm1638":{"dio":{"channel":{"gpio":37}}, "clk":{"channel":{"gpio":38}}},
 
-        "ui":{"name":"apt1", "stb":{"channel":{"gpio":39}}}
+        "ui":{"name":"apt1", "stb":{"channel":{"gpio":39}}, "audio_enabled":true, "thermostat_enabled":true}
     }
 }]   
+   
 
         # volume is 0..100, it is a max volume applied according to schedule
         #
@@ -472,31 +519,41 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/add?name=igma&code=47HuF9CemtholcVCz9A6&type=RFID&lock=main&lock=left
+URL: <base>/action/autonom/rfid-lock/add_code?name=igma&code=47HuF9CemtholcVCz9A6&type=RFID&lock=main&lock=left
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/remove?name=igma
+URL: <base>/action/autonom/rfid-lock/delete_code?name=igma
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/remove_all
+URL: <base>/action/autonom/rfid-lock/delete_all_codes
 BODY: none
 RESPONSE: 
 {
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/unlock?lock_channels=*
+URL: <base>/action/autonom/rfid-lock/unlock?lock_channel=*
 BODY: none
 RESPONSE: 
 {
+}
+
+REST GET get codes
+URL: <base>/get/autonom/rfid-lock/codes
+BODY: none
+RESPONSE: 
+{
+ "codes": [
+  {"name":"igma", "index":0, "type":"RFID", "code":"sfdgijfdigjiw54ijig5445", locks:["main", "sb1"]}, ...
+    ]
 }
 
 REST POST action
@@ -545,6 +602,7 @@ RESPONSE:
 // and then if a more point is added - it overrides an existing point with the nearest x-value
 //
 // recommended calibration points for 230v: 8, 30, 90, 200, 300
+// recommended calibration points for 230v: 20, 110, 200, 250, 300
 
 REST POST action
 URL: <base>/action/autonom/mains-probe/calibrate_v?addr=ZZ&channel=XX&value=YY // without the value -> uncalibrate
@@ -601,14 +659,17 @@ RESPONSE:
 REST POST action 
 URL: <base>/action/autonom/mains-probe/import_calibration_data
 BODY:  
-{
+{ "mainsProbeCalibrationData":{
  "input_v":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...],
  "input_a_high":[{"addr":<addr>, "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...],
  "input_a_low":[{"addr":"", "index":<channel>, x_2_y_map[<floats: x1,y1,x2,y2...>]}, ...]
-}
+}}
 RESPONSE: 
 {
 }
+
+// NOTE!!!!! Due to limited buffer size for json parsing the above operation may need be taken by parts (e.g. one group at a time)
+
 
 REST POST action
 URL: <base>/action/autonom/multi/uart_command?command=XX
@@ -621,6 +682,19 @@ RESPONSE:
 REST POST action  
 URL: <base>/action/autonom/multi/audio_control?source=<bt, www, fm or none>,channel=<channel index, for webradio or fm>,volume=<0..100> 
 BODY: none
+RESPONSE: 
+{
+}
+
+// all old items are discarded, so sending "temps":[] will clear thermostat display
+REST POST action  
+URL: <base>/action/autonom/multi/set_volatile
+BODY: 
+[ 
+    {"ui_name" : "apt1", 
+     "temps":[{"item":"apt1", "temp":21.4},{"item":"out", "temp":-8.7}],
+     "temp_corr" : 0.5}
+]
 RESPONSE: 
 {
 }
@@ -704,36 +778,53 @@ RESPONSE:
     }
 
     {
-        "multi": {
-            "bt": {
-                "latest_indications": {
-                    "AVRCPCFG": "15",
-                    "BTEN": "0",
-                    "I2SCFG": "0",
-                    "NAME": "APT2",
-                    "PIN": "4321",
-                    "PROFILE": "176",
-                    "SPKVOL": "0,14",
-                    "SSP": "0"
-                }
-            },
-            "www": {
-                "is_streaming": true,
-                "url_index": 1,
-                "url_name": "ffh-de",
-                "bitrate": 128000
-            },
-            "fm": {
-                "is_streaming": false,
-                "index": -1,
-                "name": "",
-                "freq": 0
-            },
-            "volume": 40,
-            "title": "Alvaro Soler x Topic - Solo Para Ti",
-            "status": ""
+    "multi": {
+        "bt": {
+            "latest_indications": {
+                "A2DPMUTED": "0",
+                "A2DPSTAT": "2",
+                "AVRCPCFG": "15",
+                "AVRCPSTAT": "1",
+                "BTEN": "1",
+                "DEVSTAT": "0",
+                "HFPSTAT": "1",
+                "I2SCFG": "1",
+                "NAME": "APT1",
+                "PIN": "4321",
+                "PROFILE": "176",
+                "PWRSTAT": "0",
+                "SPKVOL": "0,14",
+                "SSP": "0",
+                "VER": "BT1036,V2.8.5,20250108"
+            }
+        },
+        "www": {
+            "is_streaming": true,
+            "url_index": 1,
+            "url_name": "ffh-de",
+            "bitrate": 128000
+        },
+        "fm": {
+            "is_streaming": false,
+            "index": -1,
+            "name": "",
+            "freq": 0
+        },
+        "ui": {
+            "name": "apt1",
+            "temp_corr": 0   // this will appear if the temp_corr is set by terminal or via set_volatile action
+        },
+        "audio_control_data": {
+            "source": "www",
+            "channel": 1,
+            "volume": 40
+        },
+        "commited_volume": 40,
+        "title": "Pat Benatar - Love Is A Battlefield",
+        "status": ""
         }
     }
+
 
     {
         "mains-probe":{"status":"",
@@ -822,6 +913,7 @@ void on_setup()
     else
     {
         body = webServer.arg("plain");
+        ASSERT_BODY_SIZE(body)
     }
 
     String r = restSetup(body, resetStamp);
@@ -848,6 +940,7 @@ void on_setup_pm()
     else
     {
         body = webServer.arg("plain");
+        ASSERT_BODY_SIZE(body)
     }
 
     String r = restSetupPm(body, resetStamp);
@@ -876,6 +969,7 @@ void on_setup_autonom()
     else
     {
         body = webServer.arg("plain");
+        ASSERT_BODY_SIZE(body)
     }
 
     String r = restSetupAutonom(body);
@@ -993,7 +1087,7 @@ void on_action_autonom_rfid_lock_program()
     onboard_led_paired = true;
 }
 
-void on_action_autonom_rfid_lock_add()
+void on_action_autonom_rfid_lock_add_code()
 {
     String name_str;
     String code_str;
@@ -1040,7 +1134,7 @@ void on_action_autonom_rfid_lock_add()
 
     if (argument_ok == true)
     {
-        r = restActionAutonomRfidLockAdd(name_str, code_str, locks, type_str);
+        r = restActionAutonomRfidLockAddCode(name_str, code_str, locks, type_str);
     }
     else
     {
@@ -1056,6 +1150,112 @@ void on_action_autonom_rfid_lock_add()
         webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
     }
 
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_rfid_lock_delete_code()
+{
+    String name_str;
+
+    bool argument_ok = true;
+    String r;    
+
+    if (webServer.hasArg("name") == true)
+    {
+        name_str = webServer.arg("name");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (argument_ok == true)
+    {
+        r = restActionAutonomRfidLockDeleteCode(name_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_rfid_lock_delete_all_codes()
+{
+    DEBUG("on_action_autonom_rfid_lock_delete_all_codes")
+    String r;    
+
+    r = restActionAutonomRfidLockDeleteAllCodes();
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_action_autonom_rfid_lock_unlock()
+{
+    String lock_channel_str;
+
+    bool argument_ok = true;
+    String r;    
+
+    if (webServer.hasArg("lock_channel") == true)
+    {
+        lock_channel_str = webServer.arg("lock_channel");        
+    }
+    else
+    {
+        argument_ok = false;
+    }
+
+    if (argument_ok == true)
+    {
+        r = restActionAutonomRfidLockUnlock(lock_channel_str);
+    }
+    else
+    {
+        r = "Wrong or missing arguments";
+    }
+
+    if (r.isEmpty())
+    {
+        webServer.send(200, "application/json", "{}");
+    }
+    else
+    {
+        webServer.send(500, "application/json", String("{\"error\":\"" + r + "\"}"));
+    }
+
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+}
+
+void on_get_autonom_rfid_lock_codes()
+{
+    DEBUG("on_get_autonom_rfid_lock_codes")
+    String r = restGetAutonomRfidLockCodes();
+    DEBUG("%s", r.c_str())
+    webServer.send(200, "application/json", r.c_str());
     onboard_led_blink_once = true;
     onboard_led_paired = true;
 }
@@ -1503,6 +1703,7 @@ void on_action_autonom_mains_probe_import_calibration_data()
     else
     {
         body = webServer.arg("plain");
+        ASSERT_BODY_SIZE(body)
     }
 
     String r = restActionAutonomMainsProbeImportCalibrationData(body);
@@ -1580,6 +1781,31 @@ void on_action_autonom_multi_audio_control()
 
     onboard_led_blink_once = true;
     onboard_led_paired = true;
+}
+
+void on_action_autonom_multi_set_volatile()
+{
+    DEBUG("on_action_autonom_multi_set_volatile")
+
+    String body;
+
+    if (webServer.hasArg("plain") == false)
+    {
+        ERROR("multi set volatile POST request without a payload")
+    }
+    else
+    {
+        body = webServer.arg("plain");
+        ASSERT_BODY_SIZE(body)
+    }
+
+    String r = restActionAutonomMultiSetVolatile(body);
+
+    webServer.send(200, "application/json", r.c_str());
+    onboard_led_blink_once = true;
+    onboard_led_paired = true;
+
+    DEBUG("on_action_autonom_multi_set_volatile done")
 }
 
 void on_reset()
@@ -1675,7 +1901,11 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/cleanup/autonom", HTTP_POST, on_cleanup_autonom);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/keybox/actuate", HTTP_POST, on_action_autonom_keybox_actuate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/program", HTTP_POST, on_action_autonom_rfid_lock_program);
-    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/add", HTTP_POST, on_action_autonom_rfid_lock_add);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/add_code", HTTP_POST, on_action_autonom_rfid_lock_add_code);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/delete_code", HTTP_POST, on_action_autonom_rfid_lock_delete_code);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/delete_all_codes", HTTP_POST, on_action_autonom_rfid_lock_delete_all_codes);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/rfid-lock/unlock", HTTP_POST, on_action_autonom_rfid_lock_unlock);
+    webServer.on("/" HARVESTER_API_KEY "/get/autonom/rfid-lock/codes", HTTP_GET, on_get_autonom_rfid_lock_codes);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/calibrate", HTTP_POST, on_action_autonom_proportional_calibrate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/proportional/actuate", HTTP_POST, on_action_autonom_proportional_actuate);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/zero2ten/calibrate_input", HTTP_POST, on_action_autonom_zero2ten_calibrate_input);
@@ -1692,6 +1922,7 @@ void wwwSetupRouting()
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/mains-probe/import_calibration_data", HTTP_POST, on_action_autonom_mains_probe_import_calibration_data);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/uart_command", HTTP_POST, on_action_autonom_multi_uart_command);
     webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/audio_control", HTTP_POST, on_action_autonom_multi_audio_control);
+    webServer.on("/" HARVESTER_API_KEY "/action/autonom/multi/set_volatile", HTTP_POST, on_action_autonom_multi_set_volatile);
     webServer.on("/" HARVESTER_API_KEY "/reset", HTTP_POST, on_reset);
     webServer.on("/" HARVESTER_API_KEY "/reset/pm", HTTP_POST, on_reset_pm);
     webServer.on("/" HARVESTER_API_KEY "/get", HTTP_GET, on_get);

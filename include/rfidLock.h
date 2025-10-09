@@ -1,17 +1,16 @@
 #ifdef INCLUDE_RFIDLOCK
 
 #include <ArduinoJson.h>
-#include <buzzer.h>
-#include <SPI.h>//https://www.arduino.cc/en/reference/SPI
-#include <Wire.h>
 #include <MFRC522.h>//https://github.com/miguelbalboa/rfid
-#include <PN532_I2C.h>
-#include <PN532.h>
-#include <NfcAdapter.h>
-#include <vector>
-#include <map>
+
+#include <buzzer.h>
+#include <keypad.h>
 #include <relayChannelConfig.h>
 #include <digitalOutputChannelConfig.h>
+
+#include <vector>
+#include <map>
+
 
 class RfidLockConfig
 {
@@ -28,10 +27,11 @@ class RfidLockConfig
             rfid = config.rfid;
             lock = config.lock;
             buzzer = config.buzzer;
+            keypad = config.keypad;
             green_led = config.green_led;
             red_led = config.red_led;
 
-            // codes intentionally handled manually
+            // codes handled in separate EPROM
 
             return *this;
         }
@@ -46,17 +46,17 @@ class RfidLockConfig
         bool operator == (const RfidLockConfig & config) const
         {
             return rfid == config.rfid && lock == config.lock && buzzer == config.buzzer && 
-                   green_led == config.green_led && red_led == config.red_led;
+                   keypad == config.keypad && green_led == config.green_led && red_led == config.red_led;
 
-            // codes intentionally handled manually
+            // codes handled in separate EPROM
         }
 
         String as_string() const
         {
             return String("{rfid=") + rfid.as_string() + ", lock=" + lock.as_string() + ", buzzer=" + buzzer.as_string() + 
-                   ", green_led=" + green_led.as_string() + ", red_led=" + red_led.as_string() + "}";
+                   ", keypad=" + keypad.as_string() + ", green_led=" + green_led.as_string() + ", red_led=" + red_led.as_string() + "}";
 
-            // codes intentionally handled manually
+            // codes handled in separate EPROM
         }
 
         // data
@@ -133,6 +133,9 @@ class RfidLockConfig
                 hw = hwRC522;
                 resetPowerDownPin = (gpio_num_t) UNUSED_PIN;
                 chipSelectPin = (gpio_num_t) 5; 
+                mosiPin = (gpio_num_t) MOSI;  
+                misoPin = (gpio_num_t) MISO; 
+                sckPin = (gpio_num_t) SCK; 
                 sclPin = (gpio_num_t) SCL; 
                 sdaPin = (gpio_num_t) SDA; 
                 i2cAddress = MFRC522_I2C_DEFAULT_ADDR;  
@@ -147,7 +150,8 @@ class RfidLockConfig
             {
                 if (protocol == pSPI)
                 {
-                    if (chipSelectPin == (gpio_num_t)-1)
+                    if (chipSelectPin == (gpio_num_t)-1 || mosiPin == (gpio_num_t)-1 || misoPin == (gpio_num_t)-1 ||
+                        sckPin == (gpio_num_t)-1)
                     {
                         return false;
                     }
@@ -186,15 +190,16 @@ class RfidLockConfig
             bool operator == (const Rfid & rfid) const
             {
                 return protocol == rfid.protocol && hw == rfid.hw && resetPowerDownPin == rfid.resetPowerDownPin && 
-                    chipSelectPin == rfid.chipSelectPin && 
-                       sclPin == rfid.sclPin && sdaPin == rfid.sdaPin && i2cAddress == rfid.i2cAddress;
+                    chipSelectPin == rfid.chipSelectPin && mosiPin == rfid.mosiPin && misoPin == rfid.misoPin && sckPin == rfid.sckPin &&  
+                    sclPin == rfid.sclPin && sdaPin == rfid.sdaPin && i2cAddress == rfid.i2cAddress;
             }
 
             String as_string() const
             {
                 return String("{protocol=") + protocol_2_str(protocol) + ", hw=" + hw_2_str(hw) + 
                               ", resetPowerDownPin=" + resetPowerDownPin + 
-                              ", chipSelectPin=" + chipSelectPin + ", sclPin=" + sclPin + ", sdaPin=" + sdaPin + 
+                              ", chipSelectPin=" + chipSelectPin + ", mosiPin=" + mosiPin + ", misoPin=" + misoPin + ", sckPin=" + sckPin + 
+                              ", sclPin=" + sclPin + ", sdaPin=" + sdaPin + 
                               ", i2cAddress=" + i2cAddress + "}";
             }
             
@@ -202,6 +207,9 @@ class RfidLockConfig
             HW hw;
             gpio_num_t resetPowerDownPin;
             gpio_num_t chipSelectPin;
+            gpio_num_t mosiPin;
+            gpio_num_t misoPin;
+            gpio_num_t sckPin;
             gpio_num_t sclPin;           
             gpio_num_t sdaPin; 
             uint8_t i2cAddress;          
@@ -280,7 +288,10 @@ class RfidLockConfig
             }
 
             
-            std::map<String, RelayChannelConfig> channels;            
+            // we have to store channels in a vector to preserve the original order in configuraton;
+            // this is needed for the lock_preselec function which uses lock index
+
+            std::vector<std::pair<String, RelayChannelConfig>> channels;            
             uint16_t linger;
         };
         
@@ -293,6 +304,7 @@ class RfidLockConfig
             }
 
             void from_json(const JsonVariant & json);
+            void to_json(JsonVariant & json);
 
             void to_eprom(std::ostream & os) const;
             bool from_eprom(std::istream & is);
@@ -306,6 +318,11 @@ class RfidLockConfig
                 }
 
                 return true;
+            }
+
+            void clear()
+            {
+                codes.clear();
             }
 
             bool operator == (const Codes & other) const
@@ -399,6 +416,7 @@ class RfidLockConfig
                 }
 
                 void from_json(const JsonVariant & json);
+                void to_json(JsonVariant & json);
 
                 void to_eprom(std::ostream & os) const;
                 bool from_eprom(std::istream & is);
@@ -464,9 +482,9 @@ class RfidLockConfig
             std::map<String, Code> codes;
         };
 
-        Codes codes;
-
         BuzzerConfig buzzer;
+        
+        KeypadConfig keypad;
 
         DigitalOutputChannelConfig green_led;
         DigitalOutputChannelConfig red_led;
@@ -520,7 +538,14 @@ RfidLockStatus get_rfid_lock_status();
 String rfid_lock_program(const String & code_str, uint16_t timeout);
 
 void rfid_lock_get_codes(RfidLockConfig::Codes & codes);
-void rfid_lock_update_codes(const RfidLockConfig::Codes & codes);
+void rfid_lock_get_codes(JsonVariant & json_variant);
+
+String rfid_lock_add_code(const String & name, const RfidLockConfig::Codes::Code & code);
+
+String rfid_lock_delete_code(const String & name);
+String rfid_lock_delete_all_codes();
+
+String rfid_lock_unlock(const String & lock_channel_str);
 
 void reconfigure_rfid_lock(const RfidLockConfig &);
 

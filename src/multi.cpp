@@ -177,9 +177,12 @@ public:
     void reconfigure(const MultiConfig::UI & _config, const MultiConfig::Service _service_config);
     void set_bus(Tm1638Bus * bus);
 
-    void enable_audio()
+    const MultiConfig::UI & get_config() const { return config; }
+    const MultiConfig::Service & get_service_config() const { return service_config; }
+
+    void enable_audio(bool _audio_enabled = true)
     {
-        audio_enabled = true;
+        audio_enabled = _audio_enabled;
     }
 
     bool is_audio_enabled() const
@@ -187,9 +190,9 @@ public:
         return audio_enabled;
     }
 
-    void enable_thermostat()
+    void enable_thermostat(bool _thermostat_enabled = true)
     {
-        thermostat_enabled = true;
+        thermostat_enabled = _thermostat_enabled;
     }
 
     bool is_thermostat_enabled() const
@@ -214,6 +217,12 @@ public:
         return audio_control_data;
     }
     
+    bool set_temps(const JsonVariant & json);
+    bool set_temp_corr(float);
+
+    float get_temp_corr() const { return temp_corr; }
+    bool is_temp_corr_set() const { return temp_corr_set; }
+
     void reset();
 
     void tick();
@@ -228,10 +237,23 @@ protected:
     
     void change_state(State to_state);
     void handle_state();
-    void handle_transition_from(State from_state);
+    void handle_transition_from(State to_state);
     void handle_transition_to(State to_state);   
 
     void handle_state_idle();
+    void handle_state_thermostat();
+    void handle_state_audio();
+    void handle_state_test();
+
+    void handle_transition_to_idle(State from_state);
+    void handle_transition_to_thermostat(State from_state);
+    void handle_transition_to_audio(State from_state);
+    void handle_transition_to_test(State from_state);
+
+    void handle_transition_from_idle(State to_state);
+    void handle_transition_from_thermostat(State to_state);
+    void handle_transition_from_audio(State to_state);
+    void handle_transition_from_test(State to_state);
 
     void handle_left_right_button_event(SmartButton::EventType et, Button button);
     void handle_up_down_button_event(SmartButton::EventType et, Button button);    
@@ -241,12 +263,23 @@ protected:
     void display_volume();
     void display_temp_corr();
 
+    void commit_audio_input();
+
+    static int reverse_map_volume_to_0_to_10(int volume_0_to_100);
+
     MultiConfig::UI config;
     MultiConfig::Service service_config;
 
     bool audio_enabled;
 
-    std::vector<AudioControlData::Source> audio_sources;
+    AudioControlData::Source selected_audio_source;
+
+    int selected_url;
+    int selected_fm;
+
+    int selected_volume_0_to_10;
+
+    static const int volume_0_to_10_mapping[11];
 
     AudioControlData audio_control_data;
     bool audio_control_data_changed;  // by UI operation
@@ -259,6 +292,7 @@ protected:
 
     bool thermostat_enabled;
     float temp_corr;
+    bool temp_corr_set;
 
     unsigned long last_thermostat_click_millis;
     unsigned long last_poll_buttons_millis;
@@ -267,7 +301,56 @@ protected:
     int longpress_check;
 };
 
-const std::pair<int, String> UISM::BLUE_LED_INFO = std::make_pair((int) 7, String("blue")); 
+const int UISM::volume_0_to_10_mapping[11] = 
+{
+    0,   // 0
+    25,  // 1
+    40,  // 2
+    50,  // 3
+    55,  // 4
+    60,  // 5
+    65,  // 6
+    70,  // 7
+    74,  // 8
+    80,  // 9
+    86   // 10
+};
+
+int UISM::reverse_map_volume_to_0_to_10(int volume_0_to_100)
+{
+    if (volume_0_to_100 < 0)
+    {
+        volume_0_to_100 = 0;
+    }
+    else if (volume_0_to_100 > 100)
+    {
+        volume_0_to_100 = 100;
+    }
+
+    int index = -1;
+    int diff = 0;
+
+    for (size_t i=0; i<sizeof(volume_0_to_10_mapping)/sizeof(volume_0_to_10_mapping[0]); ++i)
+    {
+        if (index == -1)
+        {
+            diff = abs((volume_0_to_10_mapping[i] - volume_0_to_100));
+            index = i;
+        }
+        else
+        {
+            int new_diff = abs((volume_0_to_10_mapping[i] - volume_0_to_100));
+
+            if (new_diff < diff)
+            {
+                diff = new_diff;
+                index = i;
+            }
+        }
+    }
+
+    return index;
+}
 
 
 UISM::UISM(const MultiConfig::UI & _config, const MultiConfig::Service _service_config)
@@ -276,6 +359,12 @@ UISM::UISM(const MultiConfig::UI & _config, const MultiConfig::Service _service_
 
     config = _config;
     service_config = _service_config;
+
+    enable_audio(config.audio_enabled);
+    enable_thermostat(config.thermostat_enabled);
+
+    selected_url = service_config.get_defined_url_count() == 0 ? -1 : 0;
+    selected_fm = service_config.get_defined_fm_freq_count() == 0 ? -1 : 0;
 }
 
 UISM::UISM()
@@ -287,9 +376,10 @@ void UISM::init()
 {
     terminal = NULL;
 
-    audio_sources.push_back(AudioControlData::sBt);
-    audio_sources.push_back(AudioControlData::sWww);
-    audio_sources.push_back(AudioControlData::sFm);
+    selected_audio_source = AudioControlData::sNone;
+    selected_url = -1;
+    selected_fm = -1;
+    selected_volume_0_to_10 = 3;
 
     state = sNone;   
     
@@ -298,7 +388,8 @@ void UISM::init()
 
     thermostat_enabled = true;
     temp_corr = 0.0;
-    
+    temp_corr_set = false;
+
     last_thermostat_click_millis = (unsigned long)-1;
     last_poll_buttons_millis = (unsigned long)-1; 
     
@@ -319,10 +410,27 @@ void UISM::reconfigure(const MultiConfig::UI & _config, const MultiConfig::Servi
     config = _config;
     service_config = _service_config;
 
+    int url_count = service_config.get_defined_url_count();
+
+    if (selected_url < 0 || selected_url >= url_count)
+    {
+        selected_url = url_count == 0 ? -1 : 0;
+    }
+    
+    int fm_freq_count = service_config.get_defined_fm_freq_count();
+
+    if (selected_fm < 0 || selected_fm >= fm_freq_count)
+    {
+        selected_fm = fm_freq_count == 0 ? -1 : 0;
+    }
+
     if (terminal)
     {
         terminal->set_stb(config.stb);   
     }
+
+    enable_audio(config.audio_enabled);
+    enable_thermostat(config.thermostat_enabled);
 }
 
 void UISM::set_bus(Tm1638Bus * bus)
@@ -346,22 +454,8 @@ void UISM::set_bus(Tm1638Bus * bus)
             terminal->set_bus(*bus);
         }
 
-        handle_state_idle();
+        reset();
     }
-}
-
-void UISM::set_audio_control_data(const AudioControlData & _audio_control_data)
-{
-    DEBUG("UISM::set_audio_control_data %s", _audio_control_data.as_string().c_str())
-    set_audio_control_data_ext(_audio_control_data);
-    audio_control_data_changed = true;
-}
-
-void UISM::set_audio_control_data_ext(const AudioControlData & _audio_control_data)
-{
-    DEBUG("UISM::set_audio_control_data_ext %s", _audio_control_data.as_string().c_str())
-    // TODO: handle change display
-    audio_control_data = _audio_control_data;
 }
 
 void UISM::reset()
@@ -372,6 +466,167 @@ void UISM::reset()
     }
 
     change_state(sIdle);
+}
+
+void UISM::set_audio_control_data(const AudioControlData & _audio_control_data)
+{
+    DEBUG("UISM::set_audio_control_data %s", _audio_control_data.as_string().c_str())
+    audio_control_data = _audio_control_data;
+    audio_control_data_changed = true;
+}
+
+void UISM::set_audio_control_data_ext(const AudioControlData & _audio_control_data)
+{
+    DEBUG("UISM::set_audio_control_data_ext %s", _audio_control_data.as_string().c_str())
+
+    if (!(audio_control_data == _audio_control_data))
+    {
+        AudioControlData old_audio_control_data = audio_control_data;
+        audio_control_data = _audio_control_data;
+        
+        selected_volume_0_to_10 = reverse_map_volume_to_0_to_10(audio_control_data.volume);
+
+        if (audio_control_data.source == AudioControlData::sNone)
+        {
+            if (state == sAudio)
+            {
+                selected_audio_source = AudioControlData::sNone;
+                change_state(sIdle);
+            }
+        }
+        else
+        {
+            selected_audio_source = audio_control_data.source;
+
+            if (audio_control_data.source == AudioControlData::sBt)
+            {
+            }
+            else if (audio_control_data.source == AudioControlData::sWww)
+            {
+                int url_count = service_config.get_defined_url_count();
+                
+                if (url_count == 0)
+                {
+                    selected_url = -1;
+                }
+                else
+                {
+                    selected_url = audio_control_data.channel;
+
+                    if (selected_url < 0)
+                    {
+                        selected_url = 0;
+                    }
+                    else if (selected_url >= url_count)
+                    {
+                        selected_url = url_count-1;
+                    }
+                }                
+            }
+            else if (audio_control_data.source == AudioControlData::sFm)
+            {
+                int fm_freq_count = service_config.get_defined_fm_freq_count();
+                
+                if (fm_freq_count == 0)
+                {
+                    selected_fm = -1;
+                }
+                else
+                {
+                    selected_fm = audio_control_data.channel;
+
+                    if (selected_fm < 0)
+                    {
+                        selected_fm = 0;
+                    }
+                    else if (selected_fm >= fm_freq_count)
+                    {
+                        selected_fm = fm_freq_count-1;
+                    }
+                }
+            }
+
+            if (state == sAudio)
+            {
+                commit_audio_input();
+            }
+            else
+            {
+                change_state(sAudio);
+            }
+        }
+    }
+    else
+    {
+        TRACE("audio_control_data unchanged")
+    }
+
+} 
+
+bool UISM::set_temps(const JsonVariant & json)
+{    
+    TRACE("UISM<%s>::set_temps", config.name.c_str())
+
+    if (json.is<JsonArray>())
+    {
+        TRACE("json is array")
+
+        temps.clear();
+        
+        const JsonArray & jsonArray = json.as<JsonArray>();
+        auto iterator = jsonArray.begin();
+
+        while(iterator != jsonArray.end())
+        {
+            const JsonVariant & _json = *iterator;
+
+            if (_json.containsKey("item") && _json.containsKey("temp"))
+            {
+                String item = _json["item"];
+                float temp = _json["temp"];
+
+                TRACE("item name %s temp %f", item.c_str(), temp)
+
+                temps.push_back(std::make_pair(item,temp));
+            }
+
+            ++iterator;
+        }
+    
+        handle_state();
+        return true;
+    }
+    
+    return false;
+}
+
+
+bool UISM::set_temp_corr(float _temp_corr)
+{    
+    TRACE("UISM<%s>::set_temp_corr %f", config.name.c_str(), temp_corr);
+
+    if (state != sThermostat)
+    {
+        temp_corr = _temp_corr;
+        temp_corr_set = true;
+
+        if (temp_corr < TEMP_CORR_MIN)
+        {
+            temp_corr = TEMP_CORR_MIN;
+        }
+        else if (temp_corr > TEMP_CORR_MAX)
+        {
+            temp_corr = TEMP_CORR_MAX;
+        }
+        
+        TRACE("set temp_corr from REST to %f", temp_corr)
+    }
+    else
+    {
+        TRACE("skip setting temp_corr from REST, state=sThermostat (value setting in terminal ongoing)")
+    }
+    
+    return true;
 }
 
 void UISM::tick()
@@ -534,14 +789,66 @@ void UISM::change_state(State to_state)
 
 void UISM::handle_state()
 {    
+    if (state == sIdle)
+    {
+        handle_state_idle();
+    }
+    else
+    if (state == sAudio)
+    {
+        // handle_state_audio();
+    }
+    else
+    if (state == sTest)
+    {
+        handle_state_test();
+    }
 }
 
-void UISM::handle_transition_from(State from_state)
+void UISM::handle_transition_from(State to_state)
 {    
+    if (state == sIdle)
+    {
+        handle_transition_from_idle(to_state);
+    }
+    else
+    if (state == sThermostat)
+    {
+        handle_transition_from_thermostat(to_state);
+    }
+    else
+    if (state == sAudio)
+    {
+        handle_transition_from_audio(to_state);
+    }
+    else
+    if (state == sTest)
+    {
+        handle_transition_from_test(to_state);
+    }
 }
 
 void UISM::handle_transition_to(State to_state)
 {    
+    if (to_state == sIdle)
+    {
+        handle_transition_to_idle(state);
+    }
+    else
+    if (to_state == sThermostat)
+    {
+        handle_transition_to_thermostat(state);
+    }
+    else
+    if (to_state == sAudio)
+    {
+        handle_transition_to_audio(state);
+    }
+    else
+    if (to_state == sTest)
+    {
+        handle_transition_to_test(state);
+    }
 }
 
 void UISM::handle_state_idle()
@@ -550,21 +857,98 @@ void UISM::handle_state_idle()
     {
         terminal->_tableau.clear();
 
-        /*if self._temp != None and len(self._temp) > 0:
-        
-            for key, value in self._temp.items():
-
-                if type(value) is float:
-                    str =  key + " " + "{0:.1f}".format(value) + "*C"
-                else:
-                    str =  key + " " + value
+        if (temps.size() > 0)
+        {
+            for (auto it=temps.begin(); it!=temps.end(); ++it)
+            {
+                char buf[16];
+                sprintf(buf, "%.1f", it->second);
+                String item = it->first + " " + buf + "*C";
                 
-                logfile.add_string(self._name + " display " + str)
-                self._terminal._tableau.set_item([str, ["repetitive"]])
-
-        else: */
+                TRACE("%s display %s", config.name.c_str(), item.c_str());
+                terminal->_tableau.set_item(std::make_pair(item, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
+            }
+        }
+        else
+        {
             terminal->_tableau.set_item(std::make_pair(String("welcome ") + config.name, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
+        }
     }
+}
+
+void UISM::handle_state_thermostat()
+{
+}
+
+void UISM::handle_state_audio()
+{
+    commit_audio_input();
+}
+
+void UISM::handle_state_test()
+{
+}
+
+void UISM::handle_transition_to_idle(State from_state)
+{
+    handle_state_idle();
+}
+
+void UISM::handle_transition_to_thermostat(State from_state)
+{
+    if (terminal)
+    {
+        terminal->_tableau.clear();
+    }
+
+    handle_state_thermostat();
+}
+
+void UISM::handle_transition_to_audio(State from_state)
+{
+    DEBUG("UISM transition to audio")
+
+    if (terminal)
+    {
+        terminal->set_led(bBlue, true);
+        terminal->_tableau.clear();
+
+        terminal->_tableau.set_item(std::make_pair("audio on", std::make_pair(Tm1638Tableau::sRepetitive, 0)), 0);
+        commit_audio_input();
+    }
+}
+
+void UISM::handle_transition_to_test(State from_state)
+{
+
+}
+
+void UISM::handle_transition_from_idle(State to_state)
+{
+
+}
+
+void UISM::handle_transition_from_thermostat(State to_state)
+{
+    last_thermostat_click_millis = (unsigned long)-1;
+}
+
+void UISM::handle_transition_from_audio(State to_state)
+{
+    DEBUG("UISM transition from audio")
+
+    if (terminal)
+    {
+        terminal->set_led(bBlue, false);
+        terminal->_tableau.clear();
+
+        commit_audio_input();
+    }
+}
+
+void UISM::handle_transition_from_test(State to_state)
+{
+
 }
 
 void UISM::handle_left_right_button_event(SmartButton::EventType et, Button button)
@@ -575,61 +959,60 @@ void UISM::handle_left_right_button_event(SmartButton::EventType et, Button butt
     {
         if (state == sAudio)
         {
-            AudioControlData new_audio_control_data = audio_control_data;
-
-            if (new_audio_control_data.source == AudioControlData::sWww)
+            if (selected_audio_source == AudioControlData::sWww)
             {
-                size_t url_count = service_config.get_defined_url_count();
+                int old_selected_url = selected_url;
+                int url_count = service_config.get_defined_url_count();
                 
                 if (url_count > 1)
                 {
                     if (button == bLeft)
                     {
-                        if (new_audio_control_data.channel > 0)
+                        if (selected_url > 0)
                         {
-                            new_audio_control_data.channel--;
+                            selected_url--;
                         }
                     }
                     else
                     if (button == bRight)
                     {
-                        if (new_audio_control_data.channel < url_count-1)
+                        if (selected_url < url_count-1)
                         {
-                            new_audio_control_data.channel++;
+                            selected_url++;
                         }
                     }
-
                 }
 
-                DEBUG("www channel step from %d to %d", (int) audio_control_data.channel, (int) new_audio_control_data.channel)
+                DEBUG("www channel step from %d to %d", (int) old_selected_url, (int) selected_url)
             }
             else
-            if (new_audio_control_data.source == AudioControlData::sFm)
+            if (selected_audio_source == AudioControlData::sFm)
             {
-                size_t fm_freq_count = service_config.get_defined_fm_freq_count();
+                int old_selected_fm = selected_fm;
+                int fm_freq_count = service_config.get_defined_fm_freq_count();
                 
                 if (fm_freq_count > 1)
                 {
                     if (button == bLeft)
                     {
-                        if (new_audio_control_data.channel > 0)
+                        if (selected_fm > 0)
                         {
-                            new_audio_control_data.channel--;
+                            selected_fm--;
                         }
                     }
                     else
                     if (button == bRight)
                     {
-                        if (new_audio_control_data.channel < fm_freq_count-1)
+                        if (selected_fm < fm_freq_count-1)
                         {
-                            new_audio_control_data.channel++;
+                            selected_fm++;
                         }
                     }
                 }
-                DEBUG("fm channel step from %d to %d", (int) audio_control_data.channel, (int) new_audio_control_data.channel)
+                DEBUG("fm channel step from %d to %d", (int) old_selected_fm, (int) selected_fm)
             }
 
-            set_audio_control_data(new_audio_control_data);
+            commit_audio_input();
         }
     }
 }
@@ -673,6 +1056,8 @@ void UISM::handle_up_down_button_event(SmartButton::EventType et, Button button)
                         temp_corr -= TEMP_CORR_STEP;
                     }
                 }
+            
+                temp_corr_set = true;
             }
             
             // at first click up/down from idle state show current value, no step
@@ -690,31 +1075,32 @@ void UISM::handle_up_down_button_event(SmartButton::EventType et, Button button)
         
             if (audio_enabled)
             {
-                AudioControlData new_audio_control_data = audio_control_data;
+                int old_volume_0_to_10 = selected_volume_0_to_10;
 
                 if (button == bUp)
                 {
-                    if (new_audio_control_data.volume < 100)
+                    if (selected_volume_0_to_10 < sizeof(volume_0_to_10_mapping)/sizeof(volume_0_to_10_mapping[0])-1)
                     {
-                        new_audio_control_data.volume++;
+                        selected_volume_0_to_10++;
                     }
                 }
                 else
                 {
-                    if (new_audio_control_data.volume > 0)
+                    if (selected_volume_0_to_10 > 0)
                     {
-                        new_audio_control_data.volume--;
+                        selected_volume_0_to_10--;
                     }
                 }
                 
-                if (!(new_audio_control_data == audio_control_data))
+                if (old_volume_0_to_10 != selected_volume_0_to_10)
                 {
-                    set_audio_control_data(new_audio_control_data);
+                    audio_control_data.volume = volume_0_to_10_mapping[selected_volume_0_to_10];
+                    set_audio_control_data(audio_control_data);
                 }
 
                 display_volume();
 
-                DEBUG("volume set to %d", (int) audio_control_data.volume)
+                DEBUG("volume set to %d", (int) selected_volume_0_to_10)
             }
         }
     }                    
@@ -723,21 +1109,35 @@ void UISM::handle_up_down_button_event(SmartButton::EventType et, Button button)
 void UISM::handle_blue_button_event(SmartButton::EventType et)
 {
     DEBUG("handle_blue_button_event et=%s", SmartButton::event_type_2_str(et))
-    /*
-        if event == ui.SmartButton.EVENT_PRESSED:
 
-            #logfile.add_string(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " " + str(self._audio_name) + " blue button pressed")
+    if (et == SmartButton::etPressed)
+    {
+        if (audio_enabled == false)
+        {
+            terminal->_tableau.set_item(std::make_pair("no audio", std::make_pair(Tm1638Tableau::sShot, -1)));
+        }
+        else
+        {
+            selected_audio_source = AudioControlData::next_source(selected_audio_source);
+            DEBUG("changing audio source to %s", AudioControlData::source_2_str(selected_audio_source))
 
-            if self._state != self.sAudio:
-                if not self._audio_input:
-                    self._terminal._tableau.set_item(["no audio", ["shot"]])
-                else: 
-                    self._change_state(self.sAudio)
-            else:    
-                # toggle between inputs or turn off audio if last input
-                self._handle_state_audio()
-    
-    */
+            if (state != sAudio)
+            {
+                change_state(sAudio);
+            }
+            else
+            {
+                if (selected_audio_source == AudioControlData::sNone)
+                {
+                    change_state(sIdle);
+                }
+                else
+                {
+                    handle_state_audio();
+                }
+            }
+        }  
+    }
 }
 
 void UISM::handle_test_button_event(SmartButton::EventType et)
@@ -758,18 +1158,73 @@ void UISM::handle_test_button_event(SmartButton::EventType et)
 void UISM::display_temp_corr()
 {
     char buf[64];
-    sprintf(buf, "\n%.1f*C", temp_corr);
+    sprintf(buf, "cr %.1f*C", temp_corr);
+    terminal->_tableau.clear();
     terminal->_tableau.set_item(std::make_pair(buf, std::make_pair(Tm1638Tableau::sShot, THERMOSTAT_TIMEOUT)));
-
 }
 
 void UISM::display_volume()
 {
     char buf[64];
-    sprintf(buf, "vol %d", (int) audio_control_data.volume);
-    terminal->_tableau.set_item(std::make_pair(buf, std::make_pair(Tm1638Tableau::sShot, 2)));
+    sprintf(buf, "vol %d", (int) selected_volume_0_to_10);
+    terminal->_tableau.set_item(std::make_pair(buf, std::make_pair(Tm1638Tableau::sShot, 2)), 2);
 
 }
+
+void UISM::commit_audio_input()
+{
+    AudioControlData new_audio_control_data = audio_control_data;
+
+    if (selected_audio_source != AudioControlData::sNone)    
+    {
+        String tableau_string = AudioControlData::source_2_str(selected_audio_source);
+        
+        if (selected_audio_source == AudioControlData::sWww)
+        {
+            int url_count = service_config.get_defined_url_count();
+
+            if (selected_url >= 0 && selected_url < url_count)
+            {
+                char buf[32];
+                sprintf(buf, " -%d- ", selected_url+1);
+                tableau_string += buf + service_config.url[selected_url].name;
+            }
+            new_audio_control_data.source = AudioControlData::sWww;
+            new_audio_control_data.channel = selected_url;
+        }
+        else if (selected_audio_source == AudioControlData::sFm)
+        {
+            int fm_freq_count = service_config.get_defined_fm_freq_count();
+
+            if (selected_fm >= 0 && selected_fm < fm_freq_count)
+            {
+                char buf[32];
+                sprintf(buf, " %.1f ", service_config.fm_freq[selected_fm].value);
+                tableau_string += buf + service_config.fm_freq[selected_fm].name;
+            }
+            new_audio_control_data.source = AudioControlData::sFm;
+            new_audio_control_data.channel = selected_fm;
+        }
+        else if (selected_audio_source == AudioControlData::sBt)
+        {
+            new_audio_control_data.source = AudioControlData::sBt;
+            new_audio_control_data.channel = 0;
+        }
+        
+        if (terminal)
+        {
+            terminal->_tableau.set_item(std::make_pair(tableau_string, std::make_pair(Tm1638Tableau::sRepetitive, 0)), 1);
+        }
+    }
+    else
+    {
+        new_audio_control_data.source = AudioControlData::sNone;
+    }
+
+    new_audio_control_data.volume = volume_0_to_10_mapping[selected_volume_0_to_10];
+    set_audio_control_data(new_audio_control_data);
+}
+
 
 bool multi_handler_uart_command_func(const String & command, AtResponse & response, String * error);
 String multi_uart_command(const String & command, String & response, String * error);
@@ -854,6 +1309,7 @@ public:
     }
 
     bool audio_control_ext(const String & source, const String & channel, const String & volume, String & response, String * error = NULL);
+    bool set_volatile(const JsonVariant & json, String * error = NULL);
 
 protected:
     void configure_uart();
@@ -1530,6 +1986,9 @@ void MultiHandler::ui_task(void *parameter)
 
                         _this->uism->audio_control_data_change_commited();
                     }
+                
+                    _this->status.ui.temp_corr = _this->uism->get_temp_corr();
+                    _this->status.ui.temp_corr_set = _this->uism->is_temp_corr_set();
                 }
             }
         }
@@ -1881,6 +2340,7 @@ bool MultiHandler::audio_control(const AudioControlData & new_audio_control_data
         commit_fm_freq();
     }
 
+    get_max_volume(true);  // trace selection once
     commit_volume();
 
     // TODO: save to EPROM 
@@ -1888,6 +2348,68 @@ bool MultiHandler::audio_control(const AudioControlData & new_audio_control_data
     TRACE("audio_control2 leaves")
 
     return true;
+}
+
+bool MultiHandler::set_volatile(const JsonVariant & json, String * error)
+{
+    TRACE("set_volatile enters")
+
+    Lock lock(new_delete_semaphore);
+
+    bool r = true;
+
+    if (uism != NULL)
+    {
+        if (json.is<JsonArray>())
+        {
+            // DEBUG("json is array")
+
+            const JsonArray & jsonArray = json.as<JsonArray>();
+            auto iterator = jsonArray.begin();
+
+            while(iterator != jsonArray.end())
+            {
+                const JsonVariant & _json = *iterator;
+
+                //DEBUG("item")
+
+                if (_json.containsKey("ui_name"))
+                {
+                    String ui_name = _json["ui_name"];
+                    DEBUG("ui_name %s", ui_name.c_str())
+                    
+                    if (ui_name == uism->get_config().name)
+                    {
+                        if (_json.containsKey("temps"))
+                        {
+                            if (uism->set_temps(_json["temps"]) == false)
+                            {
+                                r = false;
+                            }
+                        }
+
+                        if (_json.containsKey("temp_corr"))
+                        {
+                            if (uism->set_temp_corr(_json["temp_corr"]) == false)
+                            {
+                                r = false;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+
+                ++iterator;
+            }
+        }
+        else
+        {
+            r = false;
+        }
+    }
+
+    return r;
 }
 
 String MultiHandler::choose_url() 
@@ -1953,6 +2475,11 @@ float MultiHandler::choose_fm_freq()
 
 uint8_t MultiHandler::get_max_volume(bool trace) const
 {
+    if (trace)
+    {
+        DEBUG("get_max_volume")
+    }
+
     time_t _time_t;
     time(& _time_t);
     tm _tm = {0};
@@ -2315,6 +2842,8 @@ void MultiHandler::configure_ui()
     {
         uism->reconfigure(config.ui, config.service);
     }
+
+    status.ui.name = uism->get_config().name;
 }
 
 void MultiHandler::set_mute(bool is_mute)
@@ -2636,6 +3165,20 @@ String multi_audio_control(const String & source, const String & channel, const 
     String error;
 
     if (handler.audio_control_ext(source, channel, volume, response, & error))
+    {
+        return "";
+    }
+    else
+    {
+        return error;
+    }        
+}
+
+String multi_set_volatile(const JsonVariant & json)
+{
+    String error;
+
+    if (handler.set_volatile(json, & error))
     {
         return "";
     }

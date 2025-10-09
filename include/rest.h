@@ -15,8 +15,12 @@ String restActionAutonomKeyboxActuate(const String & channel_str);
 
 String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeout);
 
-String restActionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
-                                    const String & type_str);
+String restActionAutonomRfidLockAddCode(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                        const String & type_str);
+String restActionAutonomRfidLockDeleteCode(const String & name_str);
+String restActionAutonomRfidLockDeleteAllCodes();
+String restActionAutonomRfidLockUnlock(const String & lock_channel_str);
+String restGetAutonomRfidLockCodes();
 
 String restActionAutonomProportionalCalibrate(const String & channel_str);
 String restActionAutonomProportionalActuate(const String & channel_str, const String & value_str, 
@@ -38,6 +42,7 @@ String restActionAutonomMainsProbeImportCalibrationData(const String & body);
 
 String restActionAutonomMultiUartCommand(const String & command, String & response);
 String restActionAutonomMultiAudioControl(const String & source, const String & channel, const String & volume, String & response);
+String restActionAutonomMultiSetVolatile(const String & body);
 
 String restReset(const String & resetStamp);
 String restResetPm(const String & resetStamp);

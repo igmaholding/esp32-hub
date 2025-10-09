@@ -13,7 +13,8 @@ extern WifiHandler wifiHandler;
 #define BIG_JSON_BUFFER_SIZE 8192
 #define SMALL_JSON_BUFFER_SIZE 256
 
-static char _buffer[BIG_JSON_BUFFER_SIZE]; // for serialization of bigger things, not thread safe!
+#define SERIALIZE_BUFFER_SIZE 16384
+static char _buffer[SERIALIZE_BUFFER_SIZE]; // for serialization of bigger things, not thread safe!
 
 
 void getSystem(JsonVariant & json)
@@ -112,7 +113,7 @@ String restPing(bool include_info)
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -125,7 +126,7 @@ String restWifiInfo()
 
   jsonDocument["wifiinfo"] = wifiHandler.getWifiInfo();
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -256,10 +257,10 @@ String restActionAutonomRfidLockProgram(const String & code_str, uint16_t timeou
   return actionAutonomRfidLockProgram(code_str, timeout);
 }
 
-String restActionAutonomRfidLockAdd(const String & name_str, const String & code_str, const std::vector<String> & locks, 
-                                    const String & type_str)
+String restActionAutonomRfidLockAddCode(const String & name_str, const String & code_str, const std::vector<String> & locks, 
+                                        const String & type_str)
 {
-  TRACE("REST action autonom rfid-lock add")
+  TRACE("REST action autonom rfid-lock add code")
 
   String locks_str("[");
   for (auto it=locks.begin(); it!=locks.end(); ++it)
@@ -275,7 +276,44 @@ String restActionAutonomRfidLockAdd(const String & name_str, const String & code
   
   DEBUG("name %s, code %s, lock(s) %s, type %s", name_str.c_str(), code_str.c_str(), locks_str.c_str(), type_str.c_str())
 
-  return actionAutonomRfidLockAdd(name_str, code_str, locks, type_str);
+  return actionAutonomRfidLockAddCode(name_str, code_str, locks, type_str);
+}
+
+String restActionAutonomRfidLockDeleteCode(const String & name_str)
+{
+  TRACE("REST action autonom rfid-lock delete code")
+
+  DEBUG("name %s", name_str.c_str())
+
+  return actionAutonomRfidLockDeleteCode(name_str);
+}
+
+String restActionAutonomRfidLockDeleteAllCodes()
+{
+  TRACE("REST action autonom rfid-lock delete_all")
+  return actionAutonomRfidLockDeleteAllCodes();
+}
+
+String restActionAutonomRfidLockUnlock(const String & lock_channel_str)
+{
+  TRACE("REST action autonom rfid-lock unlock")
+
+  DEBUG("lock_channel %s", lock_channel_str.c_str())
+
+  return actionAutonomRfidLockUnlock(lock_channel_str);
+}
+
+String restGetAutonomRfidLockCodes()
+{
+  TRACE("REST get autonom rfid-lock codes")
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  JsonVariant json_variant = jsonDocument.as<JsonVariant>();
+  getAutonomRfidLockCodes(json_variant);
+
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
+  return String(_buffer);
 }
 
 String restActionAutonomProportionalCalibrate(const String & channel_str)
@@ -384,7 +422,7 @@ String restGetAutonomMainsProbeCalibrationData()
   JsonVariant json_variant = jsonDocument.as<JsonVariant>();
   getAutonomMainsProbeCalibrationData(json_variant);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -399,7 +437,6 @@ String restActionAutonomMainsProbeImportCalibrationData(const String & body)
   JsonVariant json_variant = jsonDocument.as<JsonVariant>();
 
   String r = actionAutonomMainsProbeImportCalibrationData(json_variant);
-  
   
   if (r.length())
   {
@@ -429,6 +466,31 @@ String restActionAutonomMultiAudioControl(const String & source, const String & 
   return actionAutonomMultiAudioControl(source, channel, volume, response);
 }
 
+String restActionAutonomMultiSetVolatile(const String & body)
+{
+  TRACE("REST action autonom multi set volatile")
+  DEBUG(body.c_str())
+
+  DynamicJsonDocument jsonDocument(BIG_JSON_BUFFER_SIZE);
+
+  deserializeJson(jsonDocument, body);
+  JsonVariant json_variant = jsonDocument.as<JsonVariant>();
+
+  String r = actionAutonomMultiSetVolatile(json_variant);
+  
+  
+  if (r.length())
+  {
+    r = "{\"" + r + "\"}";
+  }
+  else
+  {
+    r = "{}";
+  }
+
+  return r;
+}
+
 String restGet(const String & resetStamp) 
 {
   TRACE("REST get")
@@ -450,7 +512,7 @@ String restGet(const String & resetStamp)
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -464,7 +526,7 @@ String restGetPm(const String & resetStamp)
   JsonVariant pm = jsonDocument.as<JsonVariant>();
   getPm(pm, resetStamp);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -478,7 +540,7 @@ String restGetAutonom()
   JsonVariant autonom = jsonDocument.as<JsonVariant>();
   getAutonom(autonom);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }
 
@@ -496,6 +558,6 @@ String restPopLog()
   JsonVariant system = jsonDocument["system"];
   getSystem(system);
 
-  serializeJson(jsonDocument, _buffer); 
+  serializeJson(jsonDocument, _buffer, SERIALIZE_BUFFER_SIZE); 
   return String(_buffer);
 }

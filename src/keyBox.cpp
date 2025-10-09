@@ -47,16 +47,19 @@ bool KeyboxConfig::is_valid() const
     {
         object_name = "keypad.c[" + String(i) + "]";
 
-        if (checkpad.get_usage(keypad.c[i].gpio) != GpioCheckpad::uNone)
+        if (keypad.c[i].is_valid())
         {
-            _err_dup(object_name.c_str(), (int)keypad.c[i].gpio);
-            return false;
-        }
+            if (checkpad.get_usage(keypad.c[i].gpio) != GpioCheckpad::uNone)
+            {
+                _err_dup(object_name.c_str(), (int)keypad.c[i].gpio);
+                return false;
+            }
 
-        if (!checkpad.set_usage(keypad.c[i].gpio, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(object_name.c_str(), (int)keypad.c[i].gpio);
-            return false;
+            if (!checkpad.set_usage(keypad.c[i].gpio, GpioCheckpad::uDigitalOutput))
+            {
+                _err_cap(object_name.c_str(), (int)keypad.c[i].gpio);
+                return false;
+            }
         }
     }
 

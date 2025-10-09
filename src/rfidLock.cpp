@@ -1,12 +1,30 @@
 #ifdef INCLUDE_RFIDLOCK
 
+// #define INCLUDE_PN532 1
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <SPI.h>//https://www.arduino.cc/en/reference/SPI
+#include <Wire.h>
+
+#ifdef INCLUDE_PN532
+
+#include <PN532_I2C.h>
+#include <PN532.h>
+#include <NfcAdapter.h>
+
+#endif
+
 #include <rfidLock.h>
+#include <autonom.h>
 #include <gpio.h>
 #include <trace.h>
 #include <binarySemaphore.h>
+#include <epromImage.h>
 #include <onboardLed.h>
+#include <i2c_utils.h>
+
+#include <sstream>
 
 const uint16_t DEFAULT_PROGRAM_TIMEOUT = 10;
 
@@ -100,542 +118,38 @@ String mifare_key_type_2_str(uint8_t key_type)
     return String(str);
 }
 
-void i2c_scan(TwoWire & _wire)
-{
-  byte error, address;
-  int nDevices;
-  TRACE("Scanning I2C...")
-  nDevices = 0;
-  for(address = 1; address < 127; address++ )
-  {
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmisstion to see if
-    // a device did acknowledge to the address.
-    _wire.beginTransmission(address);
-    error = _wire.endTransmission();
-    if (error == 0)
-    {
-      TRACE("I2C device found at address 0x%x", (int) address);
-      nDevices++;
-    }
-    else if (error==4)
-    {
-      ERROR("Unknown error at address 0x%x", (int) address);
-    }    
-  }
-  if (nDevices == 0)
-    TRACE("No I2C devices found")
-  else
-    TRACE("done")
-}
-
-extern GpioHandler gpioHandler;
-
-static void _err_dup(const char *name, int value)
-{
-    ERROR("%s %d is duplicated / reused", name, value)
-}
-
-static void _err_cap(const char *name, int value)
-{
-    ERROR("%s %d, gpio doesn't have required capabilities", name, value)
-}
-
-static void _err_val(const char *name, int value)
-{
-    ERROR("%s %d incorrect", name, value)
-}
-
-bool RfidLockConfig::is_valid() const
-{
-    bool r = rfid.is_valid() && lock.is_valid() && buzzer.is_valid() && green_led.is_valid() && red_led.is_valid();
-
-    if (r == false)
-    {
-        return false;
-    }
-
-    GpioCheckpad checkpad;
-
-
-    const char *object_name = "rfid.resetPowerDownPin";
-
-    if (rfid.resetPowerDownPin != UNUSED_PIN)
-    {
-        if (checkpad.get_usage(rfid.resetPowerDownPin) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rfid.resetPowerDownPin);
-            return false;
-        }
-
-        if (!checkpad.set_usage(rfid.resetPowerDownPin, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(object_name, (int)rfid.resetPowerDownPin);
-            return false;
-        }
-    }
-
-    if (rfid.protocol == Rfid::pSPI)
-    {
-        object_name = "rfid.chipSelectPin";
-
-        if (checkpad.get_usage(rfid.chipSelectPin) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rfid.chipSelectPin);
-            return false;
-        }
-
-        if (!checkpad.set_usage(rfid.chipSelectPin, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(object_name, (int)rfid.chipSelectPin);
-            return false;
-        }
-    }
-
-    if (rfid.protocol == Rfid::pI2C)
-    {
-        object_name = "rfid.sclPin";
-
-        if (checkpad.get_usage(rfid.sclPin) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rfid.sclPin);
-            return false;
-        }
-
-        if (!checkpad.set_usage(rfid.sclPin, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(object_name, (int)rfid.sclPin);
-            return false;
-        }
-
-        object_name = "rfid.sdaPin";
-
-        if (checkpad.get_usage(rfid.sdaPin) != GpioCheckpad::uNone)
-        {
-            _err_dup(object_name, (int)rfid.sdaPin);
-            return false;
-        }
-
-        if (!checkpad.set_usage(rfid.sdaPin, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(object_name, (int)rfid.sdaPin);
-            return false;
-        }
-    }
-
-    size_t i = 0;
-
-    for (auto it = lock.channels.begin(); it != lock.channels.end(); ++it, ++i)
-    {    
-        String _object_name = String("lock.channel[") + it->first + "].gpio";
-
-        if (checkpad.get_usage(it->second.gpio) != GpioCheckpad::uNone)
-        {
-            _err_dup(_object_name.c_str(), (int)it->second.gpio);
-            return false;
-        }
-
-        if (!checkpad.set_usage(it->second.gpio, GpioCheckpad::uDigitalOutput))
-        {
-            _err_cap(_object_name.c_str(), (int)it->second.gpio);
-            return false;
-        }
-    }
-    
-    object_name = "buzzer.channel.gpio";
-
-    if (checkpad.get_usage(buzzer.channel.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)buzzer.channel.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(buzzer.channel.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)buzzer.channel.gpio);
-        return false;
-    }
-
-    object_name = "green_led.gpio";
-
-    if (checkpad.get_usage(green_led.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)green_led.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(green_led.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)green_led.gpio);
-        return false;
-    }
-
-    object_name = "red_led.gpio";
-
-    if (checkpad.get_usage(red_led.gpio) != GpioCheckpad::uNone)
-    {
-        _err_dup(object_name, (int)red_led.gpio);
-        return false;
-    }
-
-    if (!checkpad.set_usage(red_led.gpio, GpioCheckpad::uDigitalOutput))
-    {
-        _err_cap(object_name, (int)red_led.gpio);
-        return false;
-    }
-
-    return true;
-}
-
-void RfidLockConfig::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("rfid"))
-    {
-        const JsonVariant &_json = json["rfid"];
-        rfid.from_json(_json);
-    }
-
-    if (json.containsKey("lock"))
-    {
-        const JsonVariant &_json = json["lock"];
-        lock.from_json(_json);
-    }
-
-    if (json.containsKey("buzzer"))
-    {
-        const JsonVariant &_json = json["buzzer"];
-        buzzer.from_json(_json);
-    }
-
-    if (json.containsKey("green_led"))
-    {
-        const JsonVariant &_json = json["green_led"];
-        green_led.from_json(_json);
-    }
-
-    if (json.containsKey("red_led"))
-    {
-        const JsonVariant &_json = json["red_led"];
-        red_led.from_json(_json);
-    }
-}
-
-void RfidLockConfig::to_eprom(std::ostream &os) const
-{
-    os.write((const char *)&EPROM_VERSION, sizeof(EPROM_VERSION));
-    rfid.to_eprom(os);
-    lock.to_eprom(os);
-    buzzer.to_eprom(os);
-    green_led.to_eprom(os);
-    red_led.to_eprom(os);
-    codes.to_eprom(os);
-}
-
-bool RfidLockConfig::from_eprom(std::istream &is)
-{
-    uint8_t eprom_version = EPROM_VERSION;
-
-    is.read((char *)&eprom_version, sizeof(eprom_version));
-
-    if (eprom_version == EPROM_VERSION)
-    {
-        rfid.from_eprom(is);
-        lock.from_eprom(is);
-        buzzer.from_eprom(is);
-        green_led.from_eprom(is);
-        red_led.from_eprom(is);
-        codes.from_eprom(is);
-        return is_valid() && !is.bad();
-    }
-    else
-    {
-        ERROR("Failed to read RfidLockConfig from EPROM: version mismatch, expected %d, found %d", (int)EPROM_VERSION, (int)eprom_version)
-        return false;
-    }
-}
-
-void RfidLockConfig::Rfid::from_json(const JsonVariant &json)
-{
-    if (json.containsKey("protocol"))
-    {
-        protocol = str_2_protocol(json["protocol"]);
-    }
-
-    if (json.containsKey("hw"))
-    {
-        hw = str_2_hw(json["hw"]);
-    }
-
-    if (json.containsKey("resetPowerDownPin"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["resetPowerDownPin"]);
-        resetPowerDownPin = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-
-    if (json.containsKey("chipSelectPin"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["chipSelectPin"]);
-        chipSelectPin = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-
-    if (json.containsKey("sclPin"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["sclPin"]);
-        sclPin = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-
-    if (json.containsKey("sdaPin"))
-    {
-        unsigned gpio_unvalidated = (unsigned)((int)json["sdaPin"]);
-        sdaPin = GpioChannel::validateGpioNum(gpio_unvalidated);
-    }
-
-    if (json.containsKey("i2cAddress"))
-    {
-        i2cAddress = (uint8_t) (int) json["i2cAddress"];
-    }
-}
-
-void RfidLockConfig::Rfid::to_eprom(std::ostream &os) const
-{
-    os.write((const char *)&protocol, sizeof(protocol));
-    os.write((const char *)&hw, sizeof(hw));
-
-    uint8_t gpio_uint8 = (uint8_t)resetPowerDownPin;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-    
-    gpio_uint8 = (uint8_t)chipSelectPin;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    gpio_uint8 = (uint8_t)sclPin;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    gpio_uint8 = (uint8_t)sdaPin;
-    os.write((const char *)&gpio_uint8, sizeof(gpio_uint8));
-
-    os.write((const char *)&i2cAddress, sizeof(i2cAddress));
-}
-
-bool RfidLockConfig::Rfid::from_eprom(std::istream &is)
-{
-    is.read((char *)&protocol, sizeof(protocol));
-    is.read((char *)&hw, sizeof(hw));
-
-    int8_t gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    resetPowerDownPin = (gpio_num_t)gpio_int8;
-
-    gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    chipSelectPin = (gpio_num_t)gpio_int8;
-
-    gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    sclPin = (gpio_num_t)gpio_int8;
-
-    gpio_int8 = (int8_t)-1;
-    is.read((char *)&gpio_int8, sizeof(gpio_int8));
-    sdaPin = (gpio_num_t)gpio_int8;
-
-    is.read((char *)&i2cAddress, sizeof(i2cAddress));
-
-    return is_valid() && !is.bad();
-}
-
-void RfidLockConfig::Lock::from_json(const JsonVariant &json)
-{
-    channels.clear();
-
-     if (json.containsKey("channels"))
-    {
-        const JsonVariant &_json = json["channels"];
-        const JsonObject & _json_object = _json.as<JsonObject>();
-        
-        for(auto iterator = _json_object.begin(); iterator != _json_object.end(); ++iterator) 
-        {
-            const JsonVariant & __json = iterator->value().as<JsonVariant>();
-            RelayChannelConfig channel;
-            channel.from_json(__json);
-
-            channels.insert(std::make_pair(String(iterator->key().c_str()), channel));
-        }
-    }
-
-    if (json.containsKey("linger"))
-    {
-        linger = (unsigned)((int)json["linger"]);
-    }
-}
-
-void RfidLockConfig::Lock::to_eprom(std::ostream &os) const
-{
-    uint8_t count = channels.size();
-    os.write((const char *)&count, sizeof(count));
-
-    for (auto it = channels.begin(); it != channels.end(); ++it)
-    {
-        uint8_t len = (uint8_t) it->first.length();
-        os.write((const char *)&len, sizeof(len));
-        os.write((const char *)it->first.c_str(), len);
-
-        it->second.to_eprom(os);
-    }
-
-    os.write((const char *)&linger, sizeof(linger));
-}
-
-bool RfidLockConfig::Lock::from_eprom(std::istream &is)
-{
-    channels.clear();
-
-    uint8_t count = 0;
-    is.read((char *)&count, sizeof(count));
-
-    for (size_t i=0; i<count; ++i)
-    {
-        char buf[256];
-        uint8_t len = 0;
-        is.read((char *)&len, sizeof(len));
-        is.read((char *)buf, len);
-        buf[len]=0;
-
-        RelayChannelConfig channel;
-        channel.from_eprom(is);
-
-        channels.insert(std::make_pair(String(buf), channel));
-    }
-
-    is.read((char *)&linger, sizeof(linger));
-
-    return is_valid() && !is.bad();
-}
-
-void RfidLockConfig::Codes::from_json(const JsonVariant &json)
-{ 
-    // codes are managed via separate URLs
-}
-
-void RfidLockConfig::Codes::to_eprom(std::ostream &os) const
-{ 
-    uint8_t count = codes.size();
-    os.write((const char *)&count, sizeof(count));
-
-    for (auto it = codes.begin(); it != codes.end(); ++it)
-    {
-        uint8_t len = (uint8_t) it->first.length();
-        os.write((const char *)&len, sizeof(len));
-        os.write((const char *)it->first.c_str(), len);
-
-        it->second.to_eprom(os);
-    }
-}
-
-bool RfidLockConfig::Codes::from_eprom(std::istream &is)
-{ 
-    codes.clear();
-
-    uint8_t count = 0;
-    is.read((char *)&count, sizeof(count));
-
-    for (size_t i=0; i<count; ++i)
-    {
-        char buf[256];
-        uint8_t len = 0;
-        is.read((char *)&len, sizeof(len));
-        is.read((char *)buf, len);
-        buf[len]=0;
-
-        Code code;
-        code.from_eprom(is);
-
-        codes.insert(std::make_pair(String(buf), code));
-    }
-
-    return is_valid() && !is.bad();
-}
-
-void RfidLockConfig::Codes::Code::from_json(const JsonVariant &json)
-{
-    // codes are managed via separate URLs
-}
-
-void RfidLockConfig::Codes::Code::to_eprom(std::ostream &os) const
-{
-    uint8_t len = value.length();
-    os.write((const char *)&len, sizeof(len));
-
-    if (len)
-    {
-        os.write(value.c_str(), len);
-    }
-
-    uint8_t count = locks.size();
-    os.write((const char *)&count, sizeof(count));
-
-    for (auto it = locks.begin(); it != locks.end(); ++it)
-    {
-        uint8_t len = (uint8_t) it->length();
-        os.write((const char *)&len, sizeof(len));
-        os.write((const char *)it->c_str(), len);
-    }
-
-    uint8_t type_uint8_t = (uint8_t) type;
-    os.write((const char *)&type_uint8_t, sizeof(type_uint8_t));
-}
-
-bool RfidLockConfig::Codes::Code::from_eprom(std::istream &is)
-{
-    uint8_t len = 0;
-    char buf[256];
-
-    is.read((char *)&len, sizeof(len));
-
-    if (len)
-    {
-        is.read(buf, len);
-        buf[len] = 0;
-        value = buf;
-    }
-    else
-    {
-        value = "";
-    }
-
-    uint8_t count = 0;
-    is.read((char *)&count, sizeof(count));
-
-    for (size_t i=0; i<count; ++i)
-    {
-        is.read((char *)&len, sizeof(len));
-        is.read((char *)buf, len);
-        buf[len]=0;
-
-        locks.push_back(buf);
-    }
-
-    uint8_t type_uint8_t = 0;
-    is.read((char *)&type_uint8_t, sizeof(type_uint8_t));
-    type = (Type) type_uint8_t;
-
-    return is_valid() && !is.bad();
-}
-
 
 class RfidLockHandler
 {
 public:
 
+    static const int DATA_EPROM_VERSION = 1;
+
     RfidLockHandler()
     {
         _is_active = false;
         _is_finished = true;
+
+        _data_needs_save = false;
+
         rc522 = NULL;
+
+        #ifdef INCLUDE_PN532
         pn532_i2c = NULL;
         nfc_adapter = NULL;
+        #endif
+        
         red_led_state = ledOff;
         green_led_state = ledOff;
         _is_unlocking = false;
         _is_programming = false;
+
+        // the lock_preselect mechanism allows to select which of the allowed locks needs to be open after successful
+        // scan or entering the code; the user does that by clicking the number of the lock (index) before authentication
+
+        lock_preselect = -1;
+
+
         program_timeout = DEFAULT_PROGRAM_TIMEOUT;
     }
 
@@ -663,17 +177,72 @@ public:
         return _status;
     }
 
-    void get_codes(RfidLockConfig::Codes & codes)
+    void get_codes(RfidLockConfig::Codes & _codes)
     {
         Lock lock(semaphore);
-        codes = config.codes;
+        _codes = codes;
     }
 
-    void update_codes(const RfidLockConfig::Codes & codes)
+    void add_code(const String & name, const RfidLockConfig::Codes::Code & code)
     {
         Lock lock(semaphore);
-        config.codes = codes;        
+        codes.codes[name] = code;
+        _data_needs_save = true;        
     }
+
+    bool delete_code(const String & name)
+    {
+        Lock lock(semaphore);
+        
+        if (codes.codes.find(name) == codes.codes.end())
+        {
+            return false;
+        }
+        
+        codes.codes.erase(name);
+        _data_needs_save = true;        
+        return true;        
+    }
+
+    void delete_all_codes()
+    {
+        Lock lock(semaphore);
+        codes.clear();
+        _data_needs_save = true;        
+    }
+
+    bool unlock(int lock_channel)
+    {
+        Lock lock(semaphore);
+        
+        if (lock_channel < 0 || lock_channel >= config.lock.channels.size())
+        {
+            return false;
+        }
+        
+        if (_is_programming == true || _is_unlocking == true)
+        {
+            return false;
+        }
+
+        std::vector<String> locks;
+        locks.push_back(config.lock.channels[lock_channel].first);
+
+        lock_preselect = -1;
+        buzzer_series_short = true; 
+        commence_unlock(locks);
+
+        return true;        
+    }
+
+    bool does_data_need_save();
+    void data_saved();
+
+    void data_to_eprom(std::ostream & os);
+    bool data_from_eprom(std::istream & is);
+
+    bool read_data();
+    void save_data();
 
 protected:
     
@@ -684,6 +253,9 @@ protected:
             delete rc522;
             rc522 = NULL;
         }
+
+        #ifdef INCLUDE_PN532
+
         if (pn532_i2c)
         {
             delete pn532_i2c;
@@ -694,16 +266,21 @@ protected:
             delete nfc_adapter;
             nfc_adapter = NULL;
         }
+
+        #endif
     }
 
     void configure_hw();
     void configure_hw_rfid(const RfidLockConfig::Rfid &rfid);
+    static void configure_hw_keypad(const KeypadConfig &);
     static void configure_hw_lock(const RfidLockConfig::Lock &lock);
     static void configure_hw_buzzer(const BuzzerConfig &);
     void configure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led);
     static void unconfigure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led);
 
     static void write_lock(const RfidLockConfig::Lock &lock, bool value);
+
+    bool handle_keypad_input(const String &);
 
     static void task(void *parameter);
     static void unlock_task(void *parameter);
@@ -725,18 +302,27 @@ protected:
     RfidLockConfig config;
     RfidLockStatus status;
 
+    RfidLockConfig::Codes codes;
+
     bool _is_active;
     bool _is_finished;
 
+    bool _data_needs_save;
+
     MFRC522 * rc522;
+    
+    #ifdef INCLUDE_PN532
+
     PN532_I2C * pn532_i2c;
     NfcAdapter * nfc_adapter;
+
+    #endif
 
     LedState green_led_state;
     LedState red_led_state;
 
     bool _is_unlocking;
-    std::vector<String> unlocking_what;
+    int lock_preselect;
 
     bool _is_programming;
     String program_code;
@@ -758,7 +344,9 @@ void RfidLockHandler::start(const RfidLockConfig &_config)
     }
 
     config = _config;
-    config.codes = _config.codes;
+    //codes = _config.codes;
+
+    read_data();
 
     configure_hw();
 
@@ -785,6 +373,7 @@ void RfidLockHandler::stop()
     }
 
     stop_buzzer_task();
+    stop_keypad_task();
     clear_rfid();
     unconfigure_hw_leds(config.green_led, config.red_led);
 }
@@ -825,6 +414,14 @@ void RfidLockHandler::reconfigure(const RfidLockConfig &_config)
 }
 
 
+static void press_reflex()
+{
+    buzzer_one_short = true;
+}
+
+
+#ifdef INCLUDE_PN532
+
 void readNFC(NfcAdapter & _nfc) 
 {
     //return;
@@ -835,6 +432,8 @@ void readNFC(NfcAdapter & _nfc)
  }
 }
 
+#endif
+
 
 void RfidLockHandler::task(void *parameter)
 {
@@ -842,6 +441,14 @@ void RfidLockHandler::task(void *parameter)
 
     TRACE("rfid_lock_task: started")
     buzzer_one_long = true;
+
+    String keypad_input;
+
+    const size_t LOCK_PRESELECT_TIMEOUT = 10; // seconds
+    unsigned long last_lock_presellect_millis = millis();
+
+    const size_t SAVE_DATA_INTERVAL = 10; // seconds
+    unsigned long last_save_data_millis = millis();
 
     RfidLockStatus status_copy;
 
@@ -860,8 +467,69 @@ void RfidLockHandler::task(void *parameter)
 
     while (_this->_is_active)
     {
+        unsigned long now_millis = millis();
+
+        if (now_millis < last_save_data_millis || 
+            (now_millis-last_save_data_millis)/1000 >= SAVE_DATA_INTERVAL)
+        {
+            last_save_data_millis = now_millis;
+
+            if (_this->does_data_need_save())
+            {
+                _this->save_data();
+                _this->data_saved();
+            }
+        }
+        
+        if (_this->lock_preselect != -1)
+        {
+            if (now_millis < last_lock_presellect_millis || 
+                (now_millis-last_lock_presellect_millis)/1000 >= LOCK_PRESELECT_TIMEOUT)
+            {
+               _this->lock_preselect = -1;
+            }
+        }
+
         if (_this->_is_unlocking == false && _this->_is_programming == false)
         {
+            String keypad_queue = pop_keypad_queue();
+
+            for (size_t i=0; i<keypad_queue.length(); ++i)
+            {
+                if (keypad_queue[i] == '*')
+                {
+                    keypad_input += keypad_queue[i];
+
+                    if (keypad_input.length() >= 2)  // complete string
+                    {
+                        _this->handle_keypad_input(keypad_input);
+                        keypad_input.clear();
+                    }
+                }
+                else
+                {
+                    if (keypad_input.isEmpty())
+                    {
+                        if (strchr("0123456789", keypad_queue[i]) != NULL)
+                        {
+                            _this->lock_preselect = (int) (keypad_queue[i]-'0');
+                            last_lock_presellect_millis = millis();
+                        }                        
+                        else
+                        {
+                            // the input should start and end with a '*'
+                            // do nothing and warn with a signal
+
+                            buzzer_one_long = true;
+                        }
+                    }
+                    else
+                    {
+                        keypad_input += keypad_queue[i];
+                    }
+                }
+            }
+
             if (_this->rc522)
             {   
                 MFRC522::MIFARE_Key _key = ACTIVE_MIFARE_KEY_A;
@@ -894,10 +562,14 @@ void RfidLockHandler::task(void *parameter)
                 */
             }
 
+            #ifdef INCLUDE_PN532
+
             if (_this->nfc_adapter)
             {
                 readNFC(*(_this->nfc_adapter));
             }
+
+            #endif
         }
 
         delay(10);
@@ -925,28 +597,58 @@ void RfidLockHandler::unlock_task(void *parameter)
     _this->green_led_state = ledOn;
 
     uint16_t linger = 1;
+    std::vector<std::pair<uint8_t, uint8_t>> commit_gpios;
     
     { Lock lock(_this->semaphore);
 
     linger = _this->config.lock.linger;
-    for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
+
+    if (_this->lock_preselect != -1)
     {
-        if (locks_param->empty() == true || 
-            std::find(locks_param->begin(), locks_param->end(), it->first) != locks_param->end())
+        TRACE("lock_preselect is set to %d", _this->lock_preselect)
+
+        if (_this->lock_preselect >= 0 && _this->lock_preselect < _this->config.lock.channels.size())
         {
-            TRACE("Unlocking channel %s", it->first.c_str())
-            digitalWrite(it->second.gpio, it->second.inverted ? 0 : 1);
+            auto preselect_channel = _this->config.lock.channels[_this->lock_preselect];
+
+            if (locks_param->empty() == true || std::find(locks_param->begin(), locks_param->end(),preselect_channel.first) != locks_param->end())
+            {
+                TRACE("Will unlock channel %s", preselect_channel.first.c_str())
+                commit_gpios.push_back(std::make_pair((uint8_t) preselect_channel.second.gpio, (uint8_t) preselect_channel.second.inverted));
+            }
+            else
+            {
+                ERROR("lock_preselect channel %d (%s) is valid but not in the unlock list for the given code", _this->lock_preselect, preselect_channel.first.c_str())
+            }
+        }
+        else
+        {
+                ERROR("lock_preselect channel index %d is invalid", _this->lock_preselect)
+        }
+
+        _this->lock_preselect = -1;
+    }
+    else
+    {
+        for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
+        {
+            if (locks_param->empty() == true || 
+                std::find(locks_param->begin(), locks_param->end(), it->first) != locks_param->end())
+            {            
+                TRACE("Will unlock channel %s", it->first.c_str())
+                commit_gpios.push_back(std::make_pair((uint8_t) it->second.gpio, (uint8_t) it->second.inverted));
+            }
         }
     }}
 
-    delay(linger * 1000);
+    // actuate locks one at a time to avoid dips in power consumption
 
-    { Lock lock(_this->semaphore);
-
-    for (auto it=_this->config.lock.channels.begin(); it!=_this->config.lock.channels.end(); ++it)
+    for (auto it=commit_gpios.begin(); it!=commit_gpios.end(); ++it)
     {
-        digitalWrite(it->second.gpio, it->second.inverted ? 1 : 0);
-    }}
+        digitalWrite(it->first, it->second ? 0 : 1);
+        delay(linger * 1000);
+        digitalWrite(it->first, it->second ? 1 : 0);
+    }
 
     _this->red_led_state = ledOn;
     _this->green_led_state = ledOff;
@@ -1112,6 +814,178 @@ void RfidLockHandler::program_task(void *parameter)
 
     TRACE("rfid_program_task: finished")
     vTaskDelete(NULL);
+}
+
+bool RfidLockHandler::handle_keypad_input(const String & keypad_input)
+{
+    TRACE("keypad input %s", keypad_input.c_str())
+
+    String code = keypad_input.substring(1,keypad_input.length()-1);
+
+    bool found = false;
+    String code_name;
+    std::vector<String> locks;
+
+    DEBUG("code %s", code.c_str())
+
+    if (!code.isEmpty())
+    {
+        { Lock lock(semaphore);
+
+            for (auto it=codes.codes.begin(); it!=codes.codes.end();++it)
+            {
+                if (it->second.type == RfidLockConfig::Codes::Code::tKeypad && it->second.value == code)
+                {
+                    found = true;
+                    code_name = it->first;
+                    locks = it->second.locks;
+                    break; 
+                }
+            }
+        }
+
+        if (found == true)
+        {
+            TRACE("Code found, code_name %s", code_name.c_str())
+            buzzer_series_short = true; 
+            commence_unlock(locks);
+            return true; 
+        }
+        else
+        {
+            TRACE("Code not found")
+            buzzer_one_long = true; 
+        }
+    }
+
+    return false;
+}   
+
+bool RfidLockHandler::does_data_need_save() 
+{
+    return _data_needs_save;
+}
+
+void RfidLockHandler::data_saved() 
+{
+    _data_needs_save = false;
+}
+
+void RfidLockHandler::data_to_eprom(std::ostream &os) 
+{
+    Lock lock(semaphore);
+
+    DEBUG("RfidLockHandler data_to_eprom")
+
+    uint8_t eprom_version = (uint8_t)DATA_EPROM_VERSION;
+    os.write((const char *)&eprom_version, sizeof(eprom_version));
+
+    codes.to_eprom(os);
+}
+
+bool RfidLockHandler::data_from_eprom(std::istream &is)
+{
+    uint8_t eprom_version = DATA_EPROM_VERSION;
+
+    is.read((char *)&eprom_version, sizeof(eprom_version));
+
+    DEBUG("RfidLockHandler data_from_eprom")
+
+    if (eprom_version == DATA_EPROM_VERSION)
+    {
+        DEBUG("Version match")
+
+        Lock lock(semaphore);
+        codes.from_eprom(is);
+    }
+
+    if (is.bad())
+    {
+        ERROR("error reading codes")
+        return false;
+    }
+
+    return true;
+}
+
+
+bool RfidLockHandler::read_data() 
+{
+    Lock lock(semaphore);
+    EpromImage dataVolume(AUTONOM_DATA_VOLUME);
+
+    TRACE("RfidLockHandler reading data from EEPROM")
+
+    if (dataVolume.read() == true)
+    {
+        for (auto it = dataVolume.blocks.begin(); it != dataVolume.blocks.end(); ++it)
+        {
+            if(it->first == ftRfidLock)
+            {
+                const char * function_type_str = function_type_2_str((FunctionType) it->first);
+                TRACE("Found block type for function %s", function_type_str)
+
+                std::istringstream is(it->second);
+
+                if (data_from_eprom(is) == true)
+                {
+                    TRACE("RfidLockHandler data read success")
+                    return true;
+                }
+                else
+                {
+                    TRACE("RfidLockHandler data read failure")
+                }
+            }
+        }
+    }
+    else
+    {
+        ERROR("Cannot read eprom image (data)")
+    }
+
+    return false;
+}
+
+void RfidLockHandler::save_data() 
+{
+    Lock lock(AutonomDataVolumeSemaphore);
+    EpromImage dataVolume(AUTONOM_DATA_VOLUME);
+    dataVolume.read();
+
+    std::ostringstream os;
+
+    TRACE("Saving RfidLock data to EEPROM")
+    data_to_eprom(os);
+
+    std::string buffer = os.str();
+    TRACE("block size %d", (int) os.tellp())
+    
+    if (dataVolume.blocks.find((uint8_t) ftRfidLock) == dataVolume.blocks.end())
+    {
+        dataVolume.blocks.insert({(uint8_t) ftRfidLock, buffer});
+    }
+    else
+    {
+        if (dataVolume.blocks[(uint8_t) ftRfidLock] == buffer)
+        {
+            TRACE("Data identical, skip saving")
+            return;
+        }
+        else
+        {
+            dataVolume.blocks[(uint8_t) ftRfidLock] = buffer;
+        }
+    }
+    
+    if (dataVolume.write())
+    {
+        TRACE("RfidLock data save success")
+    }
+    else
+    {
+        TRACE("RfidLock data save failure")
+    }
 }
 
 bool RfidLockHandler::rc522_check_read_mifare_sector(MFRC522::MIFARE_Key & key, uint8_t sector_index, 
@@ -1380,7 +1254,7 @@ bool RfidLockHandler::tag_submitted(const MIFARE_Classic_1K_Sector & sector_data
 
     { Lock lock(semaphore);
 
-        for (auto it=config.codes.codes.begin(); it!=config.codes.codes.end();++it)
+        for (auto it=codes.codes.begin(); it!=codes.codes.end();++it)
         {
             if (it->second.type == RfidLockConfig::Codes::Code::tRFID && it->second.value == code)
             {
@@ -1433,11 +1307,13 @@ void RfidLockHandler::commence_unlock(const std::vector<String> & locks)
 
             for (auto it=locks.begin(); it!=locks.end();++it)
             {
-                auto channel_it = config.lock.channels.find(*it);
-
-                if (channel_it != config.lock.channels.end())
+                for (auto jt=config.lock.channels.begin(); jt!=config.lock.channels.end(); ++jt)
                 {
-                    locks_param.push_back(*it);                    
+                    if (jt->first == *it)
+                    {
+                        locks_param.push_back(*it);                    
+                        break;
+                    }
                 }
             }
 
@@ -1519,12 +1395,18 @@ void RfidLockHandler::configure_hw()
     configure_hw_rfid(config.rfid);
     configure_hw_lock(config.lock);
     configure_hw_buzzer(config.buzzer);
+    configure_hw_keypad(config.keypad);
     configure_hw_leds(config.green_led, config.red_led);
 }
 
 void RfidLockHandler::configure_hw_buzzer(const BuzzerConfig & config)
 {
     start_buzzer_task(config);
+}
+
+void RfidLockHandler::configure_hw_keypad(const KeypadConfig & config)
+{
+    start_keypad_task(config, press_reflex);
 }
 
 void RfidLockHandler::configure_hw_leds(const DigitalOutputChannelConfig &green_led, const DigitalOutputChannelConfig &red_led)
@@ -1570,6 +1452,8 @@ void RfidLockHandler::configure_hw_rfid(const RfidLockConfig::Rfid &_config)
     else
     if (_config.hw == RfidLockConfig::Rfid::hwPN532)
     {
+        #ifdef INCLUDE_PN532
+
         if (_config.protocol == RfidLockConfig::Rfid::pI2C)
         {
             if (_config.resetPowerDownPin != UNUSED_PIN)
@@ -1592,6 +1476,12 @@ void RfidLockHandler::configure_hw_rfid(const RfidLockConfig::Rfid &_config)
         {
             ERROR("no support for PN532/%s", RfidLockConfig::Rfid::protocol_2_str(_config.protocol))            
         }
+        #else
+            
+        ERROR("no support for PN532/%s", RfidLockConfig::Rfid::protocol_2_str(_config.protocol))            
+
+        #endif
+
     }
     else
     {
@@ -1606,6 +1496,30 @@ void RfidLockHandler::configure_hw_lock(const RfidLockConfig::Lock &config)
         pinMode(it->second.gpio, OUTPUT);
         digitalWrite(it->second.gpio, it->second.inverted ? 1 : 0);
     }
+}
+
+bool __is_number(const String & value)
+{
+    size_t c = 0;
+
+    for (size_t i=0; i<value.length(); ++i)
+    {
+        if (!(isdigit(value[i]) || value[i] == '.'))
+        {
+            return false;
+        } 
+        else
+        {
+            c++;
+        }
+    }
+    
+    if (c == 0)
+    {
+        return false;
+    }
+    
+    return true;
 }
 
 void start_rfid_lock_task(const RfidLockConfig &config)
@@ -1646,9 +1560,56 @@ void rfid_lock_get_codes(RfidLockConfig::Codes & codes)
     handler.get_codes(codes);
 }
 
-void rfid_lock_update_codes(const RfidLockConfig::Codes & codes)
+void rfid_lock_get_codes(JsonVariant & json_variant)
 {
-    handler.update_codes(codes);
+    RfidLockConfig::Codes codes;
+    handler.get_codes(codes);
+    codes.to_json(json_variant);
+}
+
+String rfid_lock_add_code(const String & name, const RfidLockConfig::Codes::Code & code)
+{
+    handler.add_code(name, code);
+    return String();
+}
+
+String rfid_lock_delete_code(const String & name)
+{
+    if (handler.delete_code(name) == true)
+    {
+        return String();
+    }
+    else
+    {
+        return String("code name invalid");
+    }
+}
+
+String rfid_lock_delete_all_codes()
+{
+    handler.delete_all_codes();
+    return String();
+}
+
+String rfid_lock_unlock(const String & lock_channel_str)
+{
+    if (__is_number(lock_channel_str))
+    {
+        int lock_channel = (int) lock_channel_str.toInt();
+
+        if (handler.unlock(lock_channel))
+        {
+            return String();
+        }
+        else
+        {
+            return String("lock_channel does not exist or busy");    
+        }
+    }
+    else
+    {
+        return String("lock_channel must be integer");
+    }
 }
 
 #endif // INCLUDE_RFIDLOCK
