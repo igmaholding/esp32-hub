@@ -680,7 +680,7 @@ RESPONSE:
 
 // all params are optional!
 REST POST action  
-URL: <base>/action/autonom/multi/audio_control?source=<bt, www, fm or none>,channel=<channel index, for webradio or fm>,volume=<0..100> 
+URL: <base>/action/autonom/multi/audio_control?source=<bt, www, fm or none>&channel=<channel index, for webradio or fm>&volume=<0..100> 
 BODY: none
 RESPONSE: 
 {

@@ -26,6 +26,7 @@
 
 #define AUDIO_CONNECTION_TIMEOUT 3000 // ms
 #define AUDIO_RECONNECT_TIMEOUT  5000 // ms
+#define AUDIO_MAX_RECONNECT_ATTEMPTS  3
 
 // NOTE: has to overload new / delete to clean the memory because the Audio class (library)
 // DOES NOT INITIALIZES ITS MEMBER VARIABLES! thus relying on that it is created statically
@@ -1186,7 +1187,7 @@ void UISM::commit_audio_input()
             if (selected_url >= 0 && selected_url < url_count)
             {
                 char buf[32];
-                sprintf(buf, " -%d- ", selected_url+1);
+                sprintf(buf, "-%d ", selected_url+1);
                 tableau_string += buf + service_config.url[selected_url].name;
             }
             new_audio_control_data.source = AudioControlData::sWww;
@@ -1246,6 +1247,7 @@ public:
         _i2c_scan_task_finished = true;
         _ui_task_finished = true;
         _should_reconnect_www = false;
+        _reconnect_count = 0;
 
         #ifdef USE_HARDWARE_SERIAL
         hardware_serial = NULL;
@@ -1349,6 +1351,7 @@ protected:
     MultiConfig config;
     MultiStatus status;
     bool _should_reconnect_www;
+    int _reconnect_count;
     bool _is_active;
     bool _task_finished;
     bool _audio_task_finished;
@@ -1809,7 +1812,9 @@ void MultiHandler::audio_task(void *parameter)
             TRACE("audio_task: requested reconnecting stream")
             //DEBUG("new_delete_semaphore 2")
             Lock lock(_this->new_delete_semaphore);
+            
             _this->_should_reconnect_www = false;
+            _this->_reconnect_count = 0;
 
             if (_this->audio_engine && _this->audio_engine->isRunning() == true)
             {
@@ -1820,7 +1825,8 @@ void MultiHandler::audio_task(void *parameter)
 
         // ATTENTION: no delay while semaphore is taken due to risk of deadlocks
 
-        if (wait_retry_audio_millis == 0 || wait_retry_audio_millis+AUDIO_RECONNECT_TIMEOUT <= now_millis || now_millis < wait_retry_audio_millis)
+        if (_this->_reconnect_count < AUDIO_MAX_RECONNECT_ATTEMPTS && (wait_retry_audio_millis == 0 || 
+            wait_retry_audio_millis+AUDIO_RECONNECT_TIMEOUT <= now_millis || now_millis < wait_retry_audio_millis))
         {
             if (_this->audio_engine != NULL)
             {
@@ -1838,16 +1844,27 @@ void MultiHandler::audio_task(void *parameter)
                             bool connect_ok = _this->audio_engine->connecttohost(url.c_str());
                             _this->audio_engine->setVolume(100);
 
-                            TRACE("audio_task: connection attempt to URL %s, result %d", url.c_str(), (int) connect_ok)
+                            TRACE("audio_task: connection attempt %d/%d to URL %s, result %d", (int) _this->_reconnect_count+1, (int) AUDIO_MAX_RECONNECT_ATTEMPTS, 
+                                  url.c_str(), (int) connect_ok)
 
                             if (connect_ok == false)
                             {
                                 wait_retry_audio_millis = now_millis;
-                                TRACE("audio_task: will retry connection in %d millis (now_millis %d) ", (int) AUDIO_RECONNECT_TIMEOUT, (int) now_millis)
+                                _this->_reconnect_count++;
+
+                                if (_this->_reconnect_count >= AUDIO_MAX_RECONNECT_ATTEMPTS)
+                                {
+                                    TRACE("audio_task: maximum connection retries reached %d", (int) AUDIO_MAX_RECONNECT_ATTEMPTS)
+                                }
+                                else
+                                {
+                                    TRACE("audio_task: will retry connection in %d millis (now_millis %d) ", (int) AUDIO_RECONNECT_TIMEOUT, (int) now_millis)
+                                }
                             }
                             else
                             {
                                 wait_retry_audio_millis = 0;  
+                                _this->_reconnect_count = 0;
                                 TRACE("audio_task: stream connected (on)")
                             }
                         }
@@ -2214,6 +2231,8 @@ bool MultiHandler::audio_control(const AudioControlData & new_audio_control_data
 
     if (new_audio_control_data.source != status.audio_control_data.source)
     {
+        _reconnect_count = 0;
+
         TRACE("audio_control: changing source to %s", AudioControlData::source_2_str(new_audio_control_data.source).c_str())
 
         if (status.audio_control_data.source == AudioControlData::sBt) // changing from Bt
@@ -2251,6 +2270,21 @@ bool MultiHandler::audio_control(const AudioControlData & new_audio_control_data
             {
                 rda5807->set_mute(true);
             }
+        }
+
+        if (new_audio_control_data.source == AudioControlData::sNone) 
+        {
+            if (tda8425)
+            {
+                tda8425->set_mute(true);
+            }            
+        }
+        else
+        {
+            if (tda8425)
+            {
+                tda8425->set_mute(false);
+            }            
         }
 
         if (new_audio_control_data.source == AudioControlData::sBt) // changing to Bt
@@ -2330,7 +2364,7 @@ bool MultiHandler::audio_control(const AudioControlData & new_audio_control_data
 
     if (will_reconnect_www == true)
     {
-        _should_reconnect_www = true;    
+        _should_reconnect_www = true; 
     }}
 
     // commit what might change from other places

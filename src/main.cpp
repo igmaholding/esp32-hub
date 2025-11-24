@@ -6,6 +6,8 @@
 #include <time.h>
 #include <eeprom.h>
 #include <esp_log.h>
+#include <esp_phy_init.h>
+#include <esp_wifi.h>
 
 #ifdef INCLUDE_ETHHUB
 #include <EthernetESP32.h>
@@ -125,9 +127,11 @@ void setup()
 
     //delay(2000);
     restoreAutonom();
-
     initKnownNetworks(knownNetworks);
     //delay(3000);
+    //esp_phy_erase_cal_data_in_nvs();
+    esp_wifi_set_max_tx_power(40);
+
     connectWifi();
     TRACE("Fetching date and time from NTP ...")
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
