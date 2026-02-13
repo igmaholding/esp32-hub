@@ -289,6 +289,12 @@ void MultiConfig::from_json(const JsonVariant &json)
         const JsonVariant &_json = json["ui"];
         ui.from_json(_json);
     }
+
+    if (json.containsKey("thermostat"))
+    {
+        const JsonVariant &_json = json["thermostat"];
+        thermostat.from_json(_json);
+    }
 }
 
 void MultiConfig::to_eprom(std::ostream &os) const
@@ -302,6 +308,7 @@ void MultiConfig::to_eprom(std::ostream &os) const
     service.to_eprom(os);
     sound.to_eprom(os);
     tm1638.to_eprom(os);
+    thermostat.to_eprom(os);
     ui.to_eprom(os);
 }
 
@@ -321,6 +328,7 @@ bool MultiConfig::from_eprom(std::istream &is)
         service.from_eprom(is);
         sound.from_eprom(is);
         tm1638.from_eprom(is);
+        thermostat.from_eprom(is);
         ui.from_eprom(is);
 
         return is_valid() && !is.bad();
@@ -1063,6 +1071,42 @@ bool MultiConfig::Tm1638::from_eprom(std::istream &is)
     return is_valid() && !is.bad();
 }
 
+void MultiConfig::Thermostat::from_json(const JsonVariant &json)
+{
+    clear();
+
+    if (json.containsKey("temp_corr_min"))
+    {
+        temp_corr_min = (float) json["temp_corr_min"];
+    }
+
+    if (json.containsKey("temp_corr_max"))
+    {
+        temp_corr_max = (float) json["temp_corr_max"];
+    }
+
+    if (json.containsKey("temp_corr_step"))
+    {
+        temp_corr_step = (float) json["temp_corr_step"];
+    }
+}
+
+void MultiConfig::Thermostat::to_eprom(std::ostream &os) const
+{
+    os.write((const char *)&temp_corr_min, sizeof(temp_corr_min));
+    os.write((const char *)&temp_corr_max, sizeof(temp_corr_max));
+    os.write((const char *)&temp_corr_step, sizeof(temp_corr_step));
+}
+
+bool MultiConfig::Thermostat::from_eprom(std::istream &is)
+{
+    is.read((char *)&temp_corr_min, sizeof(temp_corr_min));
+    is.read((char *)&temp_corr_max, sizeof(temp_corr_max));
+    is.read((char *)&temp_corr_step, sizeof(temp_corr_step));
+
+    return is_valid() && !is.bad();
+}
+
 void MultiConfig::UI::from_json(const JsonVariant &json)
 {
     clear();
@@ -1133,7 +1177,6 @@ bool MultiConfig::UI::from_eprom(std::istream &is)
 
     return is_valid() && !is.bad();
 }
-
 
 
 

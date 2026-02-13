@@ -237,7 +237,7 @@ RESPONSE:
     "config":{
                 "rfid":{"protocol":"SPI", "hw":"RC522", "resetPowerDownPin":21, "chipSelectPin":5, "mosiPin":23, "misoPin":19, "clkPin":18},
 
-                "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}},  // keypad can be 4x4 or 3x4 
+                "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}},   
                             {"channel":{"gpio":26, "inverted":false}}, 
                             {"channel":{"gpio":27, "inverted":false}}],
                         "l":[{"channel":{"gpio":34, "inverted":true}}, 
@@ -247,10 +247,10 @@ RESPONSE:
                         "debounce":250
                 },
 
-                "lock":{"channels":{"main":{"gpio":17, "inverted":0, "coilon_active":1}, 
-                                    "sb1":{"gpio":16, "inverted":0, "coilon_active":1},
-                                    "sb2":{"gpio":13, "inverted":0, "coilon_active":1},
-                                    "sb3":{"gpio":4, "inverted":0, "coilon_active":1}
+                "lock":{"channels":{"main":{"gpio":4, "inverted":0, "coilon_active":1}, 
+                                    "sb1":{"gpio":22, "inverted":0, "coilon_active":1},
+                                    "sb2":{"gpio":33, "inverted":0, "coilon_active":1},
+                                    "sb3":{"gpio":13, "inverted":0, "coilon_active":1}
                                     }, "linger":3},
 
                 "buzzer":{"channel":{"gpio":12, "inverted":false}},
@@ -259,8 +259,7 @@ RESPONSE:
 
                 "red_led":{"gpio":14, "inverted":false}
     }
-}]
-                KEYPAD 4x4
+}]                KEYPAD 4x4
                 "keypad":{"c":[{"channel":{"gpio":25, "inverted":false}},  // keypad can be 4x4 or 3x4 
                             {"channel":{"gpio":26, "inverted":false}}, 
                             {"channel":{"gpio":27, "inverted":false}}, 
@@ -413,6 +412,8 @@ ESP32-S2, OBS! gpio34 at startup == high makes target go back to programming mod
 
         "tm1638":{"dio":{"channel":{"gpio":37}}, "clk":{"channel":{"gpio":38}}},
 
+        "thermostat":{"temp_corr_min":-4.0, "temp_corr_max":2.0, "temp_corr_step":0.5},
+
         "ui":{"name":"apt1", "stb":{"channel":{"gpio":39}}, "audio_enabled":true, "thermostat_enabled":true}
     }
 }]   
@@ -519,7 +520,14 @@ RESPONSE:
 }
 
 REST POST action
-URL: <base>/action/autonom/rfid-lock/add_code?name=igma&code=47HuF9CemtholcVCz9A6&type=RFID&lock=main&lock=left
+URL: <base>/action/autonom/rfid-lock/add_code?name=igma&code=47HuF9CemtholcVCz9A6&type=RFID&lock=main&lock=sb3
+BODY: none
+RESPONSE: 
+{
+}
+
+REST POST action
+URL: <base>/action/autonom/rfid-lock/add_code?name=igma&code=512136&type=keypad&lock=main&lock=sb3
 BODY: none
 RESPONSE: 
 {

@@ -101,6 +101,12 @@ void print_ntp_time()
 
 void setup()
 {
+    #if CONFIG_IDF_TARGET_ESP32S3
+
+    // onboard_led_is_neopixel = true;
+
+    #endif
+    
     start_led_task();
     onboard_led_just_started = true;
 
@@ -154,7 +160,7 @@ void setup()
     TaskHandle_t myTaskHandle = xTaskGetCurrentTaskHandle();
     auto priority = uxTaskPriorityGet( myTaskHandle );
     TRACE("main task priority is %d", int(priority))
-    
+    DEBUG("onboard led is defined at GPIO %d", (int) DEFAULT_ONBOARD_LED_GPIO)
 
     ArduinoOTA
         .onStart([]()
@@ -194,6 +200,10 @@ void setup()
     TRACE("WIFI MAC: %s", WiFi.macAddress().c_str())
 }
 
+
+static unsigned long _last_mac_ip_report_millis = 0;
+static const unsigned long MAC_IP_REPORT_MILLIS_INTERVAL = 30000;
+
 void loop()
 {
     ArduinoOTA.handle();
@@ -210,6 +220,14 @@ void loop()
     else
     {
         onboard_led_wifi_on = true;
+
+        unsigned long _millis = millis();
+
+        if (_last_mac_ip_report_millis == 0 || _millis < _last_mac_ip_report_millis || (_millis-_last_mac_ip_report_millis) >= MAC_IP_REPORT_MILLIS_INTERVAL)
+        {
+            TRACE("WIFI SSID: %s MAC: %s IP: %s", WiFi.SSID().c_str(), WiFi.macAddress().c_str(), WiFi.localIP().toString().c_str());
+            _last_mac_ip_report_millis = _millis;
+        }
     }
 }
 

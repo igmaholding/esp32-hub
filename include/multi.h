@@ -14,7 +14,7 @@ class MultiConfig
 {
     public:
 
-        const uint8_t EPROM_VERSION = 1;
+        const uint8_t EPROM_VERSION = 2;
 
         MultiConfig()
         {
@@ -37,6 +37,8 @@ class MultiConfig
 
             tm1638 = config.tm1638;
 
+            thermostat = config.thermostat;
+
             ui = config.ui;
 
             return *this;
@@ -52,14 +54,14 @@ class MultiConfig
         bool operator == (const MultiConfig & config) const
         {
             return i2s == config.i2s && i2c == config.i2c && service == config.service && sound == config.sound && 
-                   tm1638 == config.tm1638 && ui == config.ui;
+                   tm1638 == config.tm1638 && thermostat == config.thermostat && ui == config.ui;
         }
 
         String as_string() const
         {
             return String("{uart=") + uart.as_string() + ", bt=" + bt.as_string() + ", fm=" + fm.as_string() + ", i2s=" + i2s.as_string() + 
                     ", i2c=" + i2c.as_string() + ", service=" + service.as_string() + ", sound=" + sound.as_string() + 
-                    ", tm1638=" + tm1638.as_string() + ", ui=" + ui.as_string() + "}";
+                    ", tm1638=" + tm1638.as_string() + ", thermostat=" + thermostat.as_string() + ", ui=" + ui.as_string() + "}";
         }
         
         struct I2s
@@ -637,6 +639,47 @@ class MultiConfig
             GenericChannelConfig dir;            
         };
 
+        struct Thermostat
+        {
+            Thermostat()
+            {
+                clear();
+            }
+
+            void clear()
+            {
+                temp_corr_min = -4;
+                temp_corr_max = 2;
+                temp_corr_step = 0.5;
+            }
+
+            void from_json(const JsonVariant & json);
+
+            void to_eprom(std::ostream & os) const;
+            bool from_eprom(std::istream & is);
+
+            bool is_valid() const 
+            {
+                return temp_corr_min <= temp_corr_max && temp_corr_step > 0;
+            }
+
+            bool operator == (const Thermostat & thermostat) const
+            {
+                return temp_corr_min == thermostat.temp_corr_min && temp_corr_max == thermostat.temp_corr_max &&
+                       temp_corr_step == thermostat.temp_corr_step;
+            }
+
+            String as_string() const
+            {
+                return String("{temp_corr_min=") + String(temp_corr_min) + ", temp_corr_max=" + String(temp_corr_max) + 
+                              ", temp_corr_step=" + String(temp_corr_step) +"}";
+            }
+            
+            float temp_corr_min;            
+            float temp_corr_max;
+            float temp_corr_step;
+        };
+
         struct UI
         {
             UI()
@@ -694,6 +737,8 @@ class MultiConfig
         Sound sound;
 
         Tm1638 tm1638;
+
+        Thermostat thermostat;
 
         UI ui;
 };

@@ -160,26 +160,23 @@ public:
 
     const int PUSH_TEST_LED_INDEX = 0;
 	
-    const float TEMP_CORR_MAX = 2.0;
-    const float TEMP_CORR_MIN = -4.0;
-    const float TEMP_CORR_STEP = 0.5;
-
     const int THERMOSTAT_TIMEOUT = 4; // seconds
 
     const int LONGPRESS_PERFORATION = 2; // 1/x of how often a new press will be generated under the longpress condition
 
-    UISM(const MultiConfig::UI & _config, const MultiConfig::Service _service_config);
+    UISM(const MultiConfig::UI & _config, const MultiConfig::Service & _service_config, const MultiConfig::Thermostat & _thermostat_config);
     UISM();
 
     void init();
 
     ~UISM();
 
-    void reconfigure(const MultiConfig::UI & _config, const MultiConfig::Service _service_config);
+    void reconfigure(const MultiConfig::UI & _config, const MultiConfig::Service & _service_config, const MultiConfig::Thermostat & _thermostat_config);
     void set_bus(Tm1638Bus * bus);
 
     const MultiConfig::UI & get_config() const { return config; }
     const MultiConfig::Service & get_service_config() const { return service_config; }
+    const MultiConfig::Thermostat & get_thermostat_config() const { return thermostat_config; }
 
     void enable_audio(bool _audio_enabled = true)
     {
@@ -270,6 +267,7 @@ protected:
 
     MultiConfig::UI config;
     MultiConfig::Service service_config;
+    MultiConfig::Thermostat thermostat_config;
 
     bool audio_enabled;
 
@@ -354,12 +352,13 @@ int UISM::reverse_map_volume_to_0_to_10(int volume_0_to_100)
 }
 
 
-UISM::UISM(const MultiConfig::UI & _config, const MultiConfig::Service _service_config)
+UISM::UISM(const MultiConfig::UI & _config, const MultiConfig::Service & _service_config, const MultiConfig::Thermostat & _thermostat_config)
 {
     init();
 
     config = _config;
     service_config = _service_config;
+    thermostat_config = _thermostat_config;
 
     enable_audio(config.audio_enabled);
     enable_thermostat(config.thermostat_enabled);
@@ -406,10 +405,11 @@ UISM::~UISM()
     }
 }
 
-void UISM::reconfigure(const MultiConfig::UI & _config, const MultiConfig::Service _service_config)
+void UISM::reconfigure(const MultiConfig::UI & _config, const MultiConfig::Service & _service_config, const MultiConfig::Thermostat & _thermostat_config)
 {
     config = _config;
     service_config = _service_config;
+    thermostat_config = _thermostat_config;
 
     int url_count = service_config.get_defined_url_count();
 
@@ -611,13 +611,13 @@ bool UISM::set_temp_corr(float _temp_corr)
         temp_corr = _temp_corr;
         temp_corr_set = true;
 
-        if (temp_corr < TEMP_CORR_MIN)
+        if (temp_corr < thermostat_config.temp_corr_min)
         {
-            temp_corr = TEMP_CORR_MIN;
+            temp_corr = thermostat_config.temp_corr_min;
         }
-        else if (temp_corr > TEMP_CORR_MAX)
+        else if (temp_corr > thermostat_config.temp_corr_max)
         {
-            temp_corr = TEMP_CORR_MAX;
+            temp_corr = thermostat_config.temp_corr_max;
         }
         
         TRACE("set temp_corr from REST to %f", temp_corr)
@@ -660,11 +660,9 @@ bool UISM::poll_buttons()
     }
 
     last_poll_buttons_millis = now_millis;
-
     
     terminal->poll_buttons();
          
-    
     SmartButton::EventType et = pop_event_with_longpress(bLeft);
     
     if (et != SmartButton::etNone)
@@ -856,7 +854,9 @@ void UISM::handle_state_idle()
 {
     if (terminal)
     {
-        terminal->_tableau.clear();
+        //terminal->_tableau.clear();
+
+        TRACE("adding standby tableau items")
 
         if (temps.size() > 0)
         {
@@ -866,14 +866,16 @@ void UISM::handle_state_idle()
                 sprintf(buf, "%.1f", it->second);
                 String item = it->first + " " + buf + "*C";
                 
-                TRACE("%s display %s", config.name.c_str(), item.c_str());
-                terminal->_tableau.set_item(std::make_pair(item, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
+                TRACE("%s display %s", config.name.c_str(), item.c_str())
+                terminal->_tableau.set_standby_item(std::make_pair(item, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
             }
         }
         else
         {
-            terminal->_tableau.set_item(std::make_pair(String("welcome ") + config.name, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
+            terminal->_tableau.set_standby_item(std::make_pair(String("welcome ") + config.name, std::make_pair(Tm1638Tableau::sRepetitive, 0)));
         }
+
+        terminal->_tableau.enable_standby_2_active();
     }
 }
 
@@ -1045,16 +1047,16 @@ void UISM::handle_up_down_button_event(SmartButton::EventType et, Button button)
             {
                 if (button == bUp)
                 {
-                    if (temp_corr < TEMP_CORR_MAX)
+                    if (temp_corr < thermostat_config.temp_corr_max)
                     {
-                        temp_corr += TEMP_CORR_STEP;
+                        temp_corr += thermostat_config.temp_corr_step;
                     }
                 }
                 else
                 {
-                    if (temp_corr > TEMP_CORR_MIN)
+                    if (temp_corr > thermostat_config.temp_corr_min)
                     {
-                        temp_corr -= TEMP_CORR_STEP;
+                        temp_corr -= thermostat_config.temp_corr_step;
                     }
                 }
             
@@ -1553,6 +1555,12 @@ void MultiHandler::reconfigure(const MultiConfig &_config)
     {
         TRACE("multi_task: tm1638 config changed")
         should_configure_tm1638_bus = true;
+    }
+
+    if (!(current_config.thermostat == _config.thermostat))
+    {
+        TRACE("multi_task: thermostat config changed")
+        should_configure_ui = true;
     }
 
     if (!(current_config.ui == _config.ui))
@@ -2869,12 +2877,12 @@ void MultiHandler::configure_ui()
     
     if (uism == NULL)
     {
-        uism = new UISM(config.ui, config.service);
+        uism = new UISM(config.ui, config.service, config.thermostat);
         uism->set_bus(tm1638_bus);
     }
     else
     {
-        uism->reconfigure(config.ui, config.service);
+        uism->reconfigure(config.ui, config.service, config.thermostat);
     }
 
     status.ui.name = uism->get_config().name;
